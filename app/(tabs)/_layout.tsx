@@ -1,43 +1,67 @@
-import { Tabs } from 'expo-router';
-import React from 'react';
-import { Platform } from 'react-native';
+import { Tabs } from "expo-router";
+import { Platform } from "react-native";
 
-import { HapticTab } from '@/components/HapticTab';
-import { IconSymbol } from '@/components/ui/IconSymbol';
-import TabBarBackground from '@/components/ui/TabBarBackground';
-import { Colors } from '@/constants/Colors';
-import { useColorScheme } from '@/hooks/useColorScheme';
+// SVG иконки
+import HomeIcon from "../../assets/icons/home.svg";
+import MedkitIcon from "../../assets/icons/medkit.svg";
+import HistoryIcon from "../../assets/icons/history.svg";
+import ProfileIcon from "../../assets/icons/profile.svg";
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
-        tabBarButton: HapticTab,
-        tabBarBackground: TabBarBackground,
-        tabBarStyle: Platform.select({
-          ios: {
-            // Use a transparent background on iOS to show the blur effect
-            position: 'absolute',
-          },
-          default: {},
-        }),
-      }}>
+        tabBarStyle: {
+          backgroundColor: "#0F172A",
+          borderTopColor: "#1E293B",
+          height: 72,
+        },
+        tabBarActiveTintColor: "#38BDF8",
+        tabBarInactiveTintColor: "#94A3B8",
+        tabBarLabelStyle: {
+          fontSize: 12,
+          marginBottom: Platform.OS === "ios" ? 0 : 6,
+        },
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: "Домой",
+          tabBarIcon: ({ color }) => (
+            <HomeIcon width={24} height={24} fill={color} />
+          ),
         }}
       />
+
       <Tabs.Screen
-        name="explore"
+        name="medications"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: "Лекарства",
+          tabBarIcon: ({ color }) => (
+            <MedkitIcon width={24} height={24} fill={color} />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="history"
+        options={{
+          title: "История",
+          tabBarIcon: ({ color }) => (
+            <HistoryIcon width={24} height={24} fill={color} />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: "Профиль",
+          tabBarIcon: ({ color }) => (
+            <ProfileIcon width={24} height={24} fill={color} />
+          ),
         }}
       />
     </Tabs>
