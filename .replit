@@ -77,12 +77,12 @@ name = "Expo App"
 author = "agent"
 
 [workflows.workflow.metadata]
-outputType = "console"
+outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npx expo start --tunnel --port 8080"
-waitForPort = 8080
+args = "npx expo start --web --port 5000"
+waitForPort = 5000
 
 [agent]
 expertMode = true
