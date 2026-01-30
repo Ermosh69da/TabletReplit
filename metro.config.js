@@ -2,6 +2,12 @@ const { getDefaultConfig } = require("expo/metro-config");
 
 const config = getDefaultConfig(__dirname);
 
+// Use port 8080 for Metro bundler (Replit compatible)
+config.server = {
+  ...config.server,
+  port: 8080,
+};
+
 // SVG transformer
 config.transformer.babelTransformerPath = require.resolve(
   "react-native-svg-transformer",
