@@ -1,3 +1,6 @@
 { pkgs }: {
-  deps = [];
+  deps = [
+    pkgs.nodejs_22
+    pkgs.git
+  ];
 }
