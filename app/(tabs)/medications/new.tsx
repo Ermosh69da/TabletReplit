@@ -1,93 +1,160 @@
-import React, { useState } from "react";
-import { View, Text, StyleSheet, Pressable, TextInput } from "react-native";
-import { router } from "expo-router";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+} from "react-native";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
 export default function NewMedicationScreen() {
-  const [name, setName] = useState("");
-  const [dose, setDose] = useState("");
+  const router = useRouter();
 
   return (
-    <View style={styles.screen}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
+      {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10}>
-          <Text style={styles.back}>‹</Text>
-        </Pressable>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
+          <Ionicons name="arrow-back" size={22} color="#3B82F6" />
+          <Text style={styles.backText}>Назад</Text>
+        </TouchableOpacity>
 
-        <Text style={styles.title}>Новое лекарство</Text>
+        <Text style={styles.headerTitle}>Новое лекарство</Text>
 
-        <View style={{ width: 24 }} />
+        <View style={{ width: 60 }} />
       </View>
 
+      {/* Form */}
       <View style={styles.form}>
-        <Text style={styles.label}>Название</Text>
+        <Text style={styles.label}>💊 Название</Text>
         <TextInput
-          value={name}
-          onChangeText={setName}
           placeholder="Например: Аспирин"
-          placeholderTextColor="#64748B"
+          placeholderTextColor="#6B7280"
           style={styles.input}
         />
 
-        <Text style={[styles.label, { marginTop: 14 }]}>Дозировка</Text>
+        <Text style={styles.label}>⚖️ Дозировка</Text>
         <TextInput
-          value={dose}
-          onChangeText={setDose}
-          placeholder="Например: 100 мг"
-          placeholderTextColor="#64748B"
+          placeholder="1 таблетка"
+          placeholderTextColor="#6B7280"
           style={styles.input}
         />
 
-        <Pressable onPress={() => router.back()} style={styles.saveBtn}>
-          <Text style={styles.saveText}>Сохранить</Text>
-        </Pressable>
+        <Text style={styles.label}>⏰ Время приёма</Text>
+        <View style={styles.input}>
+          <Text style={styles.timeText}>21:35</Text>
+        </View>
+
+        <Text style={styles.label}>📝 Заметки</Text>
+        <TextInput
+          placeholder="После еды..."
+          placeholderTextColor="#6B7280"
+          style={[styles.input, styles.notes]}
+          multiline
+        />
       </View>
-    </View>
+
+      {/* Save Button */}
+      <TouchableOpacity
+        style={styles.saveButton}
+        activeOpacity={0.85}
+        onPress={() => {
+          console.log("Кнопка Сохранить нажата");
+        }}
+      >
+        <Text style={styles.saveText}>Сохранить</Text>
+      </TouchableOpacity>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
+  container: {
     flex: 1,
-    backgroundColor: "#0B1220",
-    paddingTop: 56,
+    backgroundColor: "#050B18",
+  },
+
+  content: {
+    paddingTop: 50,
     paddingHorizontal: 16,
+    paddingBottom: 32,
   },
 
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 20,
+    marginBottom: 24,
   },
 
-  back: { color: "#FFFFFF", fontSize: 34, width: 24 },
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: 60,
+  },
 
-  title: { color: "#FFFFFF", fontSize: 18, fontWeight: "800" },
+  backText: {
+    color: "#3B82F6",
+    fontSize: 16,
+    marginLeft: 4,
+  },
+
+  headerTitle: {
+    flex: 1,
+    textAlign: "center",
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "600",
+  },
 
   form: {
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderRadius: 18,
-    padding: 14,
+    marginBottom: 24,
   },
 
-  label: { color: "#94A3B8", fontSize: 12, fontWeight: "800", marginBottom: 8 },
+  label: {
+    color: "#9CA3AF",
+    marginTop: 16,
+    marginBottom: 6,
+    fontSize: 14,
+  },
 
   input: {
-    height: 48,
-    borderRadius: 14,
-    paddingHorizontal: 12,
+    backgroundColor: "#0E1629",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     color: "#FFFFFF",
-    backgroundColor: "rgba(15, 23, 42, 0.9)",
+    fontSize: 16,
   },
 
-  saveBtn: {
-    marginTop: 18,
-    height: 50,
-    borderRadius: 14,
+  timeText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+  },
+
+  notes: {
+    height: 100,
+    textAlignVertical: "top",
+  },
+
+  saveButton: {
     backgroundColor: "#2563EB",
+    borderRadius: 14,
+    paddingVertical: 16,
     alignItems: "center",
-    justifyContent: "center",
   },
 
-  saveText: { color: "#FFFFFF", fontSize: 16, fontWeight: "900" },
+  saveText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "600",
+  },
 });

@@ -6,6 +6,7 @@ import {
   ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { Link } from "expo-router";
 
 export default function MedicationsScreen() {
   return (
@@ -15,9 +16,14 @@ export default function MedicationsScreen() {
         <View style={styles.header}>
           <Text style={styles.title}>Мои лекарства</Text>
 
-          <TouchableOpacity style={styles.addButton}>
-            <Ionicons name="add" size={28} color="#0F172A" />
-          </TouchableOpacity>
+          <Link href="/medications/new" asChild>
+            <TouchableOpacity
+              style={styles.addButton}
+              accessibilityRole="button"
+            >
+              <Ionicons name="add" size={28} color="#0F172A" />
+            </TouchableOpacity>
+          </Link>
         </View>
 
         {/* ===== LIST ===== */}
