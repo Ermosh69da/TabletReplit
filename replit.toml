@@ -1,0 +1,26 @@
+entrypoint = "README.md"
+modules = ["nodejs-22"]
+
+[nix]
+channel = "stable-24_05"
+
+# Webview Replit смотрит на внешний порт 80 → внутри это порт 5000
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[workflows]
+runButton = "Project"
+
+# Один workflow без workflow.run — максимально стабильно
+[[workflows.workflow]]
+name = "Project"
+mode = "sequential"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash -lc 'pkill -f \"expo start\" || true; pkill -f metro || true; npx kill-port 5000 || true; CI=0 EXPO_NO_DOCTOR=1 npx expo start -c --web --port 5000 --non-interactive'"
+waitForPort = 5000
