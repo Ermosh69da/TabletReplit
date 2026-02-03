@@ -13,59 +13,88 @@ import { useRouter } from "expo-router";
 
 // Типы
 type Period = "morning" | "afternoon" | "evening";
+type MedicationStatus = "pending" | "taken" | "skipped";
 
 interface Medication {
   id: string;
   name: string;
   dosage: string;
   time: string;
-  taken: boolean;
+  status: MedicationStatus;
 }
 
-// Начальные данные (теперь это просто шаблон для состояния)
+// Начальные данные
 const INITIAL_DATA: Medication[] = [
-  { id: "1", name: "Аспирин", dosage: "100 мг", time: "08:00", taken: false },
+  {
+    id: "1",
+    name: "Аспирин",
+    dosage: "100 мг",
+    time: "08:00",
+    status: "taken",
+  },
   {
     id: "2",
     name: "Витамин D",
     dosage: "1 капсула",
     time: "09:30",
-    taken: false,
+    status: "pending",
   },
   {
     id: "3",
     name: "Омега-3",
     dosage: "1 капсула",
     time: "14:00",
-    taken: false,
+    status: "pending",
   },
   {
     id: "4",
     name: "Магний B6",
     dosage: "1 таблетка",
     time: "14:30",
-    taken: false,
+    status: "pending",
   },
-  { id: "5", name: "Мелатонин", dosage: "3 мг", time: "22:00", taken: false },
-  { id: "6", name: "Плавикс", dosage: "75 мг", time: "21:00", taken: false },
+  {
+    id: "5",
+    name: "Мелатонин",
+    dosage: "3 мг",
+    time: "22:00",
+    status: "pending",
+  },
+  {
+    id: "6",
+    name: "Плавикс",
+    dosage: "75 мг",
+    time: "21:00",
+    status: "pending",
+  },
 ];
 
 export default function HomeScreen() {
   const router = useRouter();
 
-  // 1. Создаем состояние для списка лекарств, чтобы можно было их менять
   const [medications, setMedications] = useState<Medication[]>(INITIAL_DATA);
-
   const [activePeriod, setActivePeriod] = useState<Period>("morning");
 
   // --- ЛОГИКА ---
 
-  // Функция переключения чекбокса (принять/отменить)
-  const toggleMedication = (id: string) => {
+  const handlePress = (id: string) => {
     setMedications((prevMeds) =>
-      prevMeds.map((med) =>
-        med.id === id ? { ...med, taken: !med.taken } : med,
-      ),
+      prevMeds.map((med) => {
+        if (med.id !== id) return med;
+        return { ...med, status: med.status === "taken" ? "pending" : "taken" };
+      }),
+    );
+  };
+
+  const handleLongPress = (id: string) => {
+    setMedications((prevMeds) =>
+      prevMeds.map((med) => {
+        if (med.id !== id) return med;
+        return {
+          ...med,
+          status: med.status === "skipped" ? "pending" : "skipped",
+        };
+      }),
     );
   };
 
@@ -76,13 +105,11 @@ export default function HomeScreen() {
     return "evening";
   };
 
-  // 2. Считаем прогресс динамически на основе состояния medications
   const totalDaily = medications.length;
-  const takenDaily = medications.filter((m) => m.taken).length;
+  const takenDaily = medications.filter((m) => m.status === "taken").length;
   const progressPercent =
     totalDaily > 0 ? Math.round((takenDaily / totalDaily) * 100) : 0;
 
-  // 3. Фильтруем список для отображения
   const filteredMedications = medications.filter(
     (med) => getPeriodFromTime(med.time) === activePeriod,
   );
@@ -159,6 +186,7 @@ export default function HomeScreen() {
         </View>
 
         <Text style={styles.sectionTitle}>План приёма</Text>
+        <Text style={styles.hintText}>💡 Удерживайте, чтобы пропустить</Text>
 
         {/* --- СПИСОК ЛЕКАРСТВ --- */}
         <View style={styles.listContainer}>
@@ -172,14 +200,22 @@ export default function HomeScreen() {
             filteredMedications.map((med) => (
               <TouchableOpacity
                 key={med.id}
-                style={styles.medCard}
+                style={[
+                  styles.medCard,
+                  med.status === "skipped" && styles.medCardSkipped,
+                ]}
                 activeOpacity={0.7}
-                onPress={() => toggleMedication(med.id)} // Можно нажимать на всю карточку
+                onPress={() => handlePress(med.id)}
+                onLongPress={() => handleLongPress(med.id)}
+                delayLongPress={500}
               >
                 <View style={styles.medInfo}>
-                  {/* Добавлена логика стилей для названия */}
                   <Text
-                    style={[styles.medName, med.taken && styles.medNameTaken]}
+                    style={[
+                      styles.medName,
+                      med.status === "taken" && styles.medNameTaken,
+                      med.status === "skipped" && styles.medNameSkipped,
+                    ]}
                   >
                     {med.name}
                   </Text>
@@ -192,16 +228,35 @@ export default function HomeScreen() {
                     />
                     <Text style={styles.medTime}>{med.time}</Text>
                     <Text style={styles.medDosage}>• {med.dosage}</Text>
+
+                    {/* ЛОГИКА ОТОБРАЖЕНИЯ СТАТУСОВ */}
+                    {med.status === "skipped" && (
+                      <Text style={styles.skippedLabel}>• Пропущено</Text>
+                    )}
+                    {med.status === "taken" && (
+                      <Text style={styles.takenLabel}>• Принято</Text>
+                    )}
                   </View>
                 </View>
 
-                {/* Чекбокс */}
+                {/* Чекбокс с 3 состояниями */}
                 <View
-                  style={[styles.checkbox, med.taken && styles.checkboxChecked]}
+                  style={[
+                    styles.checkbox,
+                    med.status === "taken" && styles.checkboxTaken,
+                    med.status === "skipped" && styles.checkboxSkipped,
+                  ]}
                 >
-                  {med.taken && (
+                  {med.status === "taken" && (
                     <MaterialCommunityIcons
                       name="check"
+                      size={18}
+                      color="white"
+                    />
+                  )}
+                  {med.status === "skipped" && (
+                    <MaterialCommunityIcons
+                      name="close"
                       size={18}
                       color="white"
                     />
@@ -333,7 +388,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     paddingHorizontal: 20,
     gap: 12,
-    marginBottom: 25,
+    marginBottom: 20,
   },
   tabButton: {
     flex: 1,
@@ -363,7 +418,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
     marginLeft: 20,
+  },
+  hintText: {
+    color: "#6B7280",
+    fontSize: 12,
+    marginLeft: 20,
     marginBottom: 10,
+    marginTop: 4,
   },
   listContainer: {
     paddingHorizontal: 20,
@@ -385,6 +446,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  medCardSkipped: {
+    opacity: 0.6,
+  },
   medInfo: {
     flex: 1,
   },
@@ -394,10 +458,12 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     marginBottom: 4,
   },
-  // Новый стиль для зачеркнутого текста
   medNameTaken: {
     textDecorationLine: "line-through",
-    color: "#6B7280", // Делаем текст серым, чтобы видно было, что выполнено
+    color: "#6B7280",
+  },
+  medNameSkipped: {
+    color: "#F59E0B",
   },
   medDetailsRow: {
     flexDirection: "row",
@@ -412,6 +478,17 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     fontSize: 14,
   },
+  // НОВЫЕ СТИЛИ ДЛЯ ТЕКСТА
+  skippedLabel: {
+    color: "#F59E0B",
+    fontSize: 12,
+    fontWeight: "bold",
+  },
+  takenLabel: {
+    color: "#3B82F6", // Синий цвет как у галочки
+    fontSize: 12,
+    fontWeight: "bold",
+  },
   checkbox: {
     width: 28,
     height: 28,
@@ -422,8 +499,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#4B5563",
   },
-  checkboxChecked: {
+  checkboxTaken: {
     backgroundColor: "#3B82F6",
     borderColor: "#3B82F6",
+  },
+  checkboxSkipped: {
+    backgroundColor: "#F59E0B",
+    borderColor: "#F59E0B",
   },
 });
