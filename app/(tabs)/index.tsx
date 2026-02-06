@@ -1,510 +1,537 @@
-import { useState } from "react";
+import { useMemo, useState, type ComponentProps } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Platform,
 } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { Link } from "expo-router";
 
-// Типы
-type Period = "morning" | "afternoon" | "evening";
-type MedicationStatus = "pending" | "taken" | "skipped";
+import TodayStatusSheet from "../../components/TodayStatusSheet";
+import {
+  type Period,
+  useMedications,
+} from "../../components/MedicationsContext";
 
-interface Medication {
-  id: string;
-  name: string;
-  dosage: string;
-  time: string;
-  status: MedicationStatus;
+function formatDateRu(d = new Date()) {
+  const weekday = d.toLocaleDateString("ru-RU", { weekday: "long" });
+  const dayMonth = d.toLocaleDateString("ru-RU", {
+    day: "numeric",
+    month: "long",
+  });
+  return `${weekday}, ${dayMonth}`;
 }
 
-// Начальные данные
-const INITIAL_DATA: Medication[] = [
-  {
-    id: "1",
-    name: "Аспирин",
-    dosage: "100 мг",
-    time: "08:00",
-    status: "taken",
-  },
-  {
-    id: "2",
-    name: "Витамин D",
-    dosage: "1 капсула",
-    time: "09:30",
-    status: "pending",
-  },
-  {
-    id: "3",
-    name: "Омега-3",
-    dosage: "1 капсула",
-    time: "14:00",
-    status: "pending",
-  },
-  {
-    id: "4",
-    name: "Магний B6",
-    dosage: "1 таблетка",
-    time: "14:30",
-    status: "pending",
-  },
-  {
-    id: "5",
-    name: "Мелатонин",
-    dosage: "3 мг",
-    time: "22:00",
-    status: "pending",
-  },
-  {
-    id: "6",
-    name: "Плавикс",
-    dosage: "75 мг",
-    time: "21:00",
-    status: "pending",
-  },
-];
+const COLORS = {
+  bg: "#050B18",
+  surface: "#0E1629",
+  surface2: "#0B1220",
+  border: "rgba(148,163,184,0.14)",
+
+  title: "#F8FAFC",
+  muted: "#94A3B8",
+  muted2: "#64748B",
+
+  blue: "#38BDF8",
+  blueDeep: "#2563EB",
+
+  amber: "#FBBF24",
+  amberSoft: "#FDE68A",
+  orange: "#F59E0B",
+
+  grayChip: "#111827",
+};
+
+const periodConfig: Record<
+  Period,
+  { icon: ComponentProps<typeof Ionicons>["name"]; label: string }
+> = {
+  morning: { icon: "sunny-outline", label: "утро" },
+  day: { icon: "partly-sunny-outline", label: "день" },
+  evening: { icon: "moon-outline", label: "вечер" },
+};
 
 export default function HomeScreen() {
-  const router = useRouter();
+  const { medications, todayProgress, getTodayStatus, setTodayStatus } =
+    useMedications();
 
-  const [medications, setMedications] = useState<Medication[]>(INITIAL_DATA);
-  const [activePeriod, setActivePeriod] = useState<Period>("morning");
+  const [period, setPeriod] = useState<Period>("evening");
 
-  // --- ЛОГИКА ---
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const handlePress = (id: string) => {
-    setMedications((prevMeds) =>
-      prevMeds.map((med) => {
-        if (med.id !== id) return med;
-        return { ...med, status: med.status === "taken" ? "pending" : "taken" };
-      }),
-    );
-  };
-
-  const handleLongPress = (id: string) => {
-    setMedications((prevMeds) =>
-      prevMeds.map((med) => {
-        if (med.id !== id) return med;
-        return {
-          ...med,
-          status: med.status === "skipped" ? "pending" : "skipped",
-        };
-      }),
-    );
-  };
-
-  const getPeriodFromTime = (time: string): Period => {
-    const hour = parseInt(time.split(":")[0], 10);
-    if (hour >= 4 && hour < 12) return "morning";
-    if (hour >= 12 && hour < 18) return "afternoon";
-    return "evening";
-  };
-
-  const totalDaily = medications.length;
-  const takenDaily = medications.filter((m) => m.status === "taken").length;
-  const progressPercent =
-    totalDaily > 0 ? Math.round((takenDaily / totalDaily) * 100) : 0;
-
-  const filteredMedications = medications.filter(
-    (med) => getPeriodFromTime(med.time) === activePeriod,
+  const selectedMed = useMemo(
+    () => medications.find((m) => m.id === selectedId) ?? null,
+    [medications, selectedId],
   );
 
+  const periodStats = useMemo(() => {
+    const res: Record<Period, { due: number; taken: number; skipped: number }> =
+      {
+        morning: { due: 0, taken: 0, skipped: 0 },
+        day: { due: 0, taken: 0, skipped: 0 },
+        evening: { due: 0, taken: 0, skipped: 0 },
+      };
+
+    const list = medications.filter((m) => m.repeat === "daily");
+    for (const m of list) {
+      res[m.period].due += 1;
+      const st = getTodayStatus(m.id);
+      if (st === "taken") res[m.period].taken += 1;
+      if (st === "skipped") res[m.period].skipped += 1;
+    }
+
+    return res;
+  }, [medications, todayProgress, getTodayStatus]);
+
+  const todayList = useMemo(() => {
+    return medications
+      .filter((m) => m.repeat === "daily" && m.period === period)
+      .sort((a, b) => a.time.localeCompare(b.time));
+  }, [medications, period]);
+
+  const openSheet = (id: string) => {
+    setSelectedId(id);
+    setSheetOpen(true);
+  };
+
+  const closeSheet = () => {
+    setSheetOpen(false);
+    setSelectedId(null);
+  };
+
+  const onShortPress = (id: string) => {
+    const cur = getTodayStatus(id);
+    // tap: pending <-> taken (если было skipped, станет taken)
+    setTodayStatus(id, cur === "taken" ? "pending" : "taken");
+  };
+
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-        {/* --- HEADER --- */}
-        <View style={styles.header}>
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
+        {/* Top bar */}
+        <View style={styles.top}>
           <View>
-            <Text style={styles.greeting}>Прими пилюльку !!!</Text>
-            <Text style={styles.dateText}>
-              {new Date().toLocaleDateString("ru-RU", {
-                weekday: "long",
-                day: "numeric",
-                month: "long",
-              })}
+            <Text style={styles.h1}>Прими пилюльку !!!</Text>
+            <Text style={styles.date}>{formatDateRu()}</Text>
+          </View>
+
+          <Link href="/medications/new" asChild>
+            <TouchableOpacity style={styles.plus}>
+              <Ionicons name="add" size={24} color="#0B1220" />
+            </TouchableOpacity>
+          </Link>
+        </View>
+
+        {/* Progress */}
+        <View style={styles.progressCard}>
+          <View style={styles.progressRow}>
+            <Text style={styles.progressTitle}>ПРОГРЕСС СЕГОДНЯ</Text>
+            <Text style={styles.progressMeta}>
+              {todayProgress.taken} / {todayProgress.totalForProgress}
+              {todayProgress.skipped > 0
+                ? ` • пропущено ${todayProgress.skipped}`
+                : ""}
             </Text>
           </View>
 
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => router.push("/(tabs)/medications/new")}
-          >
-            <MaterialCommunityIcons name="plus" size={26} color="white" />
-          </TouchableOpacity>
-        </View>
+          <View style={styles.progressMainRow}>
+            <Text style={styles.progressPercent}>{todayProgress.percent}%</Text>
 
-        {/* --- КАРТОЧКА ПРОГРЕССА --- */}
-        <View style={styles.progressContainer}>
-          <View style={styles.progressCard}>
-            <View style={styles.progressRow}>
-              <View>
-                <Text style={styles.progressLabel}>ПРОГРЕСС СЕГОДНЯ</Text>
-                <Text style={styles.progressPercent}>{progressPercent}%</Text>
-              </View>
-              <Text style={styles.progressCount}>
-                {takenDaily} <Text style={{ color: "#6B7280" }}>из</Text>{" "}
-                {totalDaily}
-              </Text>
+            <View style={styles.progressPill}>
+              <Ionicons name="pulse-outline" size={14} color={COLORS.blue} />
+              <Text style={styles.progressPillText}>сегодня</Text>
             </View>
+          </View>
 
-            <View style={styles.progressBarBackground}>
-              <View
-                style={[
-                  styles.progressBarFill,
-                  { width: `${progressPercent}%` },
-                ]}
-              />
-            </View>
+          <View style={styles.progressBarBg}>
+            <View
+              style={[
+                styles.progressBarFill,
+                { width: `${todayProgress.percent}%` },
+              ]}
+            />
           </View>
         </View>
 
-        {/* --- ВКЛАДКИ --- */}
-        <View style={styles.tabsContainer}>
-          <FilterButton
-            title="УТРО"
-            icon="weather-sunny"
-            isActive={activePeriod === "morning"}
-            onPress={() => setActivePeriod("morning")}
-          />
-          <FilterButton
-            title="ДЕНЬ"
-            icon="weather-partly-cloudy"
-            isActive={activePeriod === "afternoon"}
-            onPress={() => setActivePeriod("afternoon")}
-          />
-          <FilterButton
-            title="ВЕЧЕР"
-            icon="weather-night"
-            isActive={activePeriod === "evening"}
-            onPress={() => setActivePeriod("evening")}
-          />
+        {/* Period tiles */}
+        <View style={styles.periodRow}>
+          {(["morning", "day", "evening"] as Period[]).map((p) => {
+            const active = p === period;
+            const cfg = periodConfig[p];
+            const st = periodStats[p];
+
+            return (
+              <TouchableOpacity
+                key={p}
+                onPress={() => setPeriod(p)}
+                style={[styles.periodCard, active && styles.periodCardActive]}
+                activeOpacity={0.88}
+              >
+                <View
+                  style={[
+                    styles.periodIconWrap,
+                    active && styles.periodIconWrapActive,
+                  ]}
+                >
+                  <Ionicons
+                    name={cfg.icon}
+                    size={18}
+                    color={active ? COLORS.amberSoft : COLORS.amber}
+                  />
+                </View>
+
+                <Text
+                  style={[
+                    styles.periodCardText,
+                    active && styles.periodCardTextActive,
+                  ]}
+                >
+                  {cfg.label.toUpperCase()}
+                </Text>
+
+                <Text
+                  style={[
+                    styles.periodCardSub,
+                    active && styles.periodCardSubActive,
+                  ]}
+                >
+                  {st.taken}/{st.due}
+                  {st.skipped > 0 ? ` (−${st.skipped})` : ""}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
-        <Text style={styles.sectionTitle}>План приёма</Text>
-        <Text style={styles.hintText}>💡 Удерживайте, чтобы пропустить</Text>
+        {/* Plan header */}
+        <View style={styles.sectionHeader}>
+          <Ionicons name="list-outline" size={18} color={COLORS.blue} />
+          <Text style={styles.sectionTitle}>План приёма</Text>
+        </View>
+        <Text style={styles.sectionSub}>
+          Тап — “принято”, долгий тап — меню
+        </Text>
 
-        {/* --- СПИСОК ЛЕКАРСТВ --- */}
-        <View style={styles.listContainer}>
-          {filteredMedications.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyStateText}>
-                На это время приемов нет 😴
-              </Text>
-            </View>
-          ) : (
-            filteredMedications.map((med) => (
+        {todayList.length === 0 ? (
+          <View style={styles.empty}>
+            <Ionicons
+              name="information-circle-outline"
+              size={18}
+              color={COLORS.muted}
+            />
+            <Text style={styles.emptyText}>
+              На выбранный период приёмов нет
+            </Text>
+          </View>
+        ) : (
+          todayList.map((m) => {
+            const status = getTodayStatus(m.id);
+            const isTaken = status === "taken";
+            const isSkipped = status === "skipped";
+
+            return (
               <TouchableOpacity
-                key={med.id}
+                key={m.id}
                 style={[
-                  styles.medCard,
-                  med.status === "skipped" && styles.medCardSkipped,
+                  styles.planItem,
+                  isTaken && styles.planItemTaken,
+                  isSkipped && styles.planItemSkipped,
                 ]}
-                activeOpacity={0.7}
-                onPress={() => handlePress(med.id)}
-                onLongPress={() => handleLongPress(med.id)}
-                delayLongPress={500}
+                onPress={() => onShortPress(m.id)}
+                onLongPress={() => openSheet(m.id)}
+                delayLongPress={350}
+                activeOpacity={0.88}
               >
-                <View style={styles.medInfo}>
+                <View
+                  style={[
+                    styles.statusBar,
+                    isTaken && styles.statusBarTaken,
+                    isSkipped && styles.statusBarSkipped,
+                  ]}
+                />
+
+                <View style={styles.planContent}>
                   <Text
-                    style={[
-                      styles.medName,
-                      med.status === "taken" && styles.medNameTaken,
-                      med.status === "skipped" && styles.medNameSkipped,
-                    ]}
+                    style={[styles.planName, isTaken && styles.planNameDone]}
                   >
-                    {med.name}
+                    {m.name}
                   </Text>
 
-                  <View style={styles.medDetailsRow}>
-                    <MaterialCommunityIcons
-                      name="clock-outline"
+                  <View style={styles.metaRow}>
+                    <Ionicons
+                      name="time-outline"
                       size={14}
-                      color="#9CA3AF"
+                      color={COLORS.muted2}
                     />
-                    <Text style={styles.medTime}>{med.time}</Text>
-                    <Text style={styles.medDosage}>• {med.dosage}</Text>
-
-                    {/* ЛОГИКА ОТОБРАЖЕНИЯ СТАТУСОВ */}
-                    {med.status === "skipped" && (
-                      <Text style={styles.skippedLabel}>• Пропущено</Text>
-                    )}
-                    {med.status === "taken" && (
-                      <Text style={styles.takenLabel}>• Принято</Text>
-                    )}
+                    <Text style={styles.metaText}>{m.time}</Text>
+                    <Text style={styles.metaSep}>•</Text>
+                    <Text style={styles.metaText}>{m.dosage}</Text>
                   </View>
                 </View>
 
-                {/* Чекбокс с 3 состояниями */}
-                <View
-                  style={[
-                    styles.checkbox,
-                    med.status === "taken" && styles.checkboxTaken,
-                    med.status === "skipped" && styles.checkboxSkipped,
-                  ]}
-                >
-                  {med.status === "taken" && (
-                    <MaterialCommunityIcons
-                      name="check"
-                      size={18}
-                      color="white"
-                    />
+                <View style={styles.rightCol}>
+                  {isTaken ? (
+                    <View style={[styles.badge, styles.badgeTaken]}>
+                      <Text style={styles.badgeTextTaken}>принято</Text>
+                    </View>
+                  ) : isSkipped ? (
+                    <View style={[styles.badge, styles.badgeSkipped]}>
+                      <Text style={styles.badgeTextSkipped}>пропущено</Text>
+                    </View>
+                  ) : (
+                    <View style={[styles.badge, styles.badgePending]}>
+                      <Text style={styles.badgeTextPending}>ожидает</Text>
+                    </View>
                   )}
-                  {med.status === "skipped" && (
-                    <MaterialCommunityIcons
-                      name="close"
-                      size={18}
-                      color="white"
-                    />
-                  )}
+
+                  <View
+                    style={[
+                      styles.check,
+                      isTaken && styles.checkOn,
+                      isSkipped && styles.checkSkipped,
+                    ]}
+                  >
+                    {isTaken ? (
+                      <Ionicons name="checkmark" size={16} color="#0B1220" />
+                    ) : isSkipped ? (
+                      <Ionicons name="close" size={16} color="#0B1220" />
+                    ) : null}
+                  </View>
                 </View>
               </TouchableOpacity>
-            ))
-          )}
-        </View>
+            );
+          })
+        )}
       </ScrollView>
-    </SafeAreaView>
-  );
-}
 
-function FilterButton({
-  title,
-  icon,
-  isActive,
-  onPress,
-}: {
-  title: string;
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
-  isActive: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity
-      style={[styles.tabButton, isActive && styles.tabButtonActive]}
-      onPress={onPress}
-    >
-      <MaterialCommunityIcons
-        name={icon}
-        size={24}
-        color={isActive ? "#3B82F6" : "#9CA3AF"}
-        style={{ marginBottom: 4 }}
+      <TodayStatusSheet
+        visible={sheetOpen}
+        title={selectedMed ? selectedMed.name : "Приём"}
+        subtitle={
+          selectedMed
+            ? `${selectedMed.time} • ${selectedMed.dosage}`
+            : undefined
+        }
+        currentStatus={selectedId ? getTodayStatus(selectedId) : "pending"}
+        onClose={closeSheet}
+        onSelect={(nextStatus) => {
+          if (selectedId) setTodayStatus(selectedId, nextStatus);
+          closeSheet();
+        }}
       />
-      <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
-        {title}
-      </Text>
-    </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#111827",
-    paddingTop: Platform.OS === "android" ? 30 : 0,
-  },
-  header: {
-    paddingHorizontal: 20,
-    marginTop: 10,
-    marginBottom: 20,
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  content: { padding: 16, paddingBottom: 40 },
+
+  top: {
+    marginTop: 40,
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    alignItems: "center",
+    marginBottom: 14,
   },
-  greeting: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "white",
-  },
-  dateText: {
-    color: "#9CA3AF",
-    fontSize: 14,
-    marginTop: 4,
-    textTransform: "capitalize",
-  },
-  addButton: {
-    width: 44,
-    height: 44,
-    backgroundColor: "#3B82F6",
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  progressContainer: {
-    paddingHorizontal: 20,
-    marginBottom: 25,
-  },
+  h1: { color: COLORS.title, fontSize: 20, fontWeight: "800" },
+  date: { color: COLORS.muted, marginTop: 4 },
+  plus: { backgroundColor: COLORS.blue, borderRadius: 12, padding: 10 },
+
   progressCard: {
-    backgroundColor: "#1F2937",
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    elevation: 5,
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   progressRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-end",
-    marginBottom: 15,
-  },
-  progressLabel: {
-    color: "#9CA3AF",
-    fontSize: 12,
-    fontWeight: "bold",
-    textTransform: "uppercase",
-    marginBottom: 5,
-  },
-  progressPercent: {
-    color: "white",
-    fontSize: 42,
-    fontWeight: "bold",
-    lineHeight: 42,
-  },
-  progressCount: {
-    color: "#3B82F6",
-    fontSize: 16,
-    fontWeight: "bold",
-    marginBottom: 5,
-  },
-  progressBarBackground: {
-    height: 8,
-    backgroundColor: "#374151",
-    borderRadius: 4,
-    width: "100%",
-    overflow: "hidden",
-  },
-  progressBarFill: {
-    height: "100%",
-    backgroundColor: "#3B82F6",
-    borderRadius: 4,
-  },
-  tabsContainer: {
-    flexDirection: "row",
-    paddingHorizontal: 20,
-    gap: 12,
-    marginBottom: 20,
-  },
-  tabButton: {
-    flex: 1,
-    backgroundColor: "#1F2937",
-    paddingVertical: 15,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#374151",
-  },
-  tabButtonActive: {
-    backgroundColor: "#1E3A8A",
-    borderColor: "#3B82F6",
-  },
-  tabText: {
-    color: "#9CA3AF",
-    fontSize: 10,
-    fontWeight: "bold",
-    marginTop: 2,
-  },
-  tabTextActive: {
-    color: "#3B82F6",
-  },
-  sectionTitle: {
-    color: "white",
-    fontSize: 18,
-    fontWeight: "600",
-    marginLeft: 20,
-  },
-  hintText: {
-    color: "#6B7280",
-    fontSize: 12,
-    marginLeft: 20,
-    marginBottom: 10,
-    marginTop: 4,
-  },
-  listContainer: {
-    paddingHorizontal: 20,
-    gap: 12,
-  },
-  emptyState: {
-    padding: 20,
     alignItems: "center",
   },
-  emptyStateText: {
-    color: "#6B7280",
-    fontStyle: "italic",
+  progressTitle: {
+    color: COLORS.muted,
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.3,
   },
-  medCard: {
-    backgroundColor: "#1F2937",
-    padding: 16,
-    borderRadius: 16,
+  progressMeta: { color: COLORS.blue, fontSize: 12, fontWeight: "800" },
+
+  progressMainRow: {
+    marginTop: 6,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  medCardSkipped: {
-    opacity: 0.6,
-  },
-  medInfo: {
-    flex: 1,
-  },
-  medName: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "bold",
-    marginBottom: 4,
-  },
-  medNameTaken: {
-    textDecorationLine: "line-through",
-    color: "#6B7280",
-  },
-  medNameSkipped: {
-    color: "#F59E0B",
-  },
-  medDetailsRow: {
+  progressPercent: { color: COLORS.title, fontSize: 30, fontWeight: "900" },
+  progressPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: COLORS.surface2,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  medTime: {
-    color: "#9CA3AF",
-    fontSize: 14,
+  progressPillText: { color: COLORS.muted, fontWeight: "800", fontSize: 12 },
+
+  progressBarBg: {
+    height: 8,
+    backgroundColor: COLORS.surface2,
+    borderRadius: 999,
+    marginTop: 10,
   },
-  medDosage: {
-    color: "#6B7280",
-    fontSize: 14,
+  progressBarFill: {
+    height: 8,
+    backgroundColor: COLORS.blueDeep,
+    borderRadius: 999,
   },
-  // НОВЫЕ СТИЛИ ДЛЯ ТЕКСТА
-  skippedLabel: {
-    color: "#F59E0B",
-    fontSize: 12,
-    fontWeight: "bold",
-  },
-  takenLabel: {
-    color: "#3B82F6", // Синий цвет как у галочки
-    fontSize: 12,
-    fontWeight: "bold",
-  },
-  checkbox: {
-    width: 28,
-    height: 28,
+
+  periodRow: { flexDirection: "row", gap: 10, marginBottom: 16 },
+  periodCard: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
     borderRadius: 14,
-    backgroundColor: "#374151",
+    paddingVertical: 12,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#4B5563",
+    borderColor: COLORS.border,
   },
-  checkboxTaken: {
-    backgroundColor: "#3B82F6",
-    borderColor: "#3B82F6",
+  periodCardActive: {
+    backgroundColor: "rgba(37,99,235,0.26)",
+    borderColor: "rgba(56,189,248,0.55)",
   },
-  checkboxSkipped: {
-    backgroundColor: "#F59E0B",
-    borderColor: "#F59E0B",
+  periodIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.surface2,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 6,
   },
+  periodIconWrapActive: {
+    backgroundColor: "rgba(251,191,36,0.10)",
+    borderColor: "rgba(251,191,36,0.35)",
+  },
+  periodCardText: {
+    color: COLORS.muted,
+    fontWeight: "900",
+    fontSize: 11,
+    letterSpacing: 0.7,
+  },
+  periodCardTextActive: { color: COLORS.title },
+  periodCardSub: {
+    color: COLORS.muted2,
+    fontSize: 11,
+    fontWeight: "800",
+    marginTop: 4,
+  },
+  periodCardSubActive: { color: COLORS.muted },
+
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 4,
+  },
+  sectionTitle: { color: COLORS.title, fontSize: 16, fontWeight: "900" },
+  sectionSub: { color: COLORS.muted2, marginTop: 6, marginBottom: 10 },
+
+  empty: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 14,
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  emptyText: { color: COLORS.muted, fontWeight: "700" },
+
+  planItem: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  planItemTaken: { borderColor: "rgba(56,189,248,0.55)" },
+  planItemSkipped: { borderColor: "rgba(245,158,11,0.55)" },
+
+  statusBar: {
+    width: 4,
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: "rgba(148,163,184,0.25)",
+    marginRight: 12,
+  },
+  statusBarTaken: { backgroundColor: COLORS.blue },
+  statusBarSkipped: { backgroundColor: COLORS.orange },
+
+  planContent: { flex: 1, paddingRight: 12 },
+  planName: { color: COLORS.title, fontSize: 15, fontWeight: "900" },
+  planNameDone: { textDecorationLine: "line-through", color: COLORS.muted },
+
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 6,
+    flexWrap: "wrap",
+  },
+  metaText: { color: COLORS.muted2, fontSize: 12, fontWeight: "800" },
+  metaSep: { color: COLORS.muted2, fontSize: 12, fontWeight: "800" },
+
+  rightCol: { alignItems: "flex-end", gap: 10 },
+
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  badgePending: {
+    backgroundColor: COLORS.grayChip,
+    borderColor: COLORS.border,
+  },
+  badgeTaken: {
+    backgroundColor: "rgba(56,189,248,0.12)",
+    borderColor: "rgba(56,189,248,0.45)",
+  },
+  badgeSkipped: {
+    backgroundColor: "rgba(245,158,11,0.12)",
+    borderColor: "rgba(245,158,11,0.45)",
+  },
+
+  badgeTextPending: { color: COLORS.muted, fontSize: 11, fontWeight: "900" },
+  badgeTextTaken: { color: COLORS.blue, fontSize: 11, fontWeight: "900" },
+  badgeTextSkipped: { color: COLORS.orange, fontSize: 11, fontWeight: "900" },
+
+  check: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: "#334155",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "transparent",
+  },
+  checkOn: { backgroundColor: COLORS.blue, borderColor: COLORS.blue },
+  checkSkipped: { backgroundColor: "#A3A3A3", borderColor: "#A3A3A3" },
 });
