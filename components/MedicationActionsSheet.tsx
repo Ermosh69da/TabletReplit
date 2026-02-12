@@ -12,17 +12,22 @@ import { Ionicons } from "@expo/vector-icons";
 type Props = {
   visible: boolean;
   title?: string;
+
+  paused?: boolean;
+  onTogglePause: () => void;
+
   onEdit: () => void;
   onClose: () => void;
 
-  // заглушки на будущее
+  // заглушка
   onDelete?: () => void;
-  onPause?: () => void;
 };
 
 export default function MedicationActionsSheet({
   visible,
   title = "Лекарство",
+  paused = false,
+  onTogglePause,
   onEdit,
   onClose,
 }: Props) {
@@ -44,11 +49,16 @@ export default function MedicationActionsSheet({
             <Text style={styles.actionText}>Редактировать</Text>
           </TouchableOpacity>
 
-          {/* заглушки */}
-          <View style={[styles.action, styles.disabled]}>
-            <Ionicons name="pause-outline" size={20} color="#64748B" />
-            <Text style={styles.actionTextMuted}>Приостановить (позже)</Text>
-          </View>
+          <TouchableOpacity style={styles.action} onPress={onTogglePause}>
+            <Ionicons
+              name={paused ? "play-outline" : "pause-outline"}
+              size={20}
+              color="#FBBF24"
+            />
+            <Text style={styles.actionText}>
+              {paused ? "Возобновить приём" : "Приостановить приём"}
+            </Text>
+          </TouchableOpacity>
 
           <View style={[styles.action, styles.disabled]}>
             <Ionicons name="trash-outline" size={20} color="#64748B" />

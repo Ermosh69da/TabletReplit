@@ -119,6 +119,7 @@ export default function HomeScreen() {
     setTodayStatus,
     isDueToday,
   } = useMedications();
+
   const [period, setPeriod] = useState<Period>("evening");
 
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -167,7 +168,7 @@ export default function HomeScreen() {
     }
 
     return res;
-  }, [allDoses, getTodayStatus, todayProgress]);
+  }, [allDoses, getTodayStatus]);
 
   const todayList = useMemo(
     () => allDoses.filter((d) => d.period === period),
@@ -184,14 +185,9 @@ export default function HomeScreen() {
     setSelected(null);
   };
 
-  const onShortPress = (medId: string, time: string) => {
-    const cur = getTodayStatus(medId, time);
-    setTodayStatus(medId, cur === "taken" ? "pending" : "taken", time);
-  };
-
   return (
     <View style={styles.container}>
-      {/* ✅ ФИКСИРОВАННЫЙ TOP HEADER */}
+      {/* TOP HEADER */}
       <View style={styles.topHeader}>
         <View>
           <Text style={styles.h1}>Прими пилюльку !!!</Text>
@@ -207,7 +203,6 @@ export default function HomeScreen() {
 
       <HeaderFade />
 
-      {/* ✅ Скроллится всё ниже */}
       <ScrollView
         contentContainerStyle={[
           styles.content,
@@ -300,9 +295,9 @@ export default function HomeScreen() {
           <Ionicons name="list-outline" size={18} color={COLORS.blue} />
           <Text style={styles.sectionTitle}>План приёма</Text>
         </View>
-        <Text style={styles.sectionSub}>
-          Тап — “принято”, долгий тап — меню
-        </Text>
+
+        {/* ✅ обновили подсказку */}
+        <Text style={styles.sectionSub}>Тап — меню</Text>
 
         {todayList.length === 0 ? (
           <View style={styles.empty}>
@@ -329,9 +324,8 @@ export default function HomeScreen() {
                   isTaken && styles.planItemTaken,
                   isSkipped && styles.planItemSkipped,
                 ]}
-                onPress={() => onShortPress(d.med.id, d.time)}
-                onLongPress={() => openSheet(d.med.id, d.time)}
-                delayLongPress={350}
+                // ✅ один тап — открывает меню
+                onPress={() => openSheet(d.med.id, d.time)}
                 activeOpacity={0.88}
               >
                 <View

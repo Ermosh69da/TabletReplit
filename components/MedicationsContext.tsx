@@ -19,6 +19,8 @@ export type Medication = {
   startDate?: string; // YYYY-MM-DD
   weekdays?: number[]; // 0..6
   dates?: string[]; // YYYY-MM-DD[]
+
+  paused?: boolean; // ✅ новое: приостановлен
 };
 
 type MedicationsContextValue = {
@@ -27,6 +29,9 @@ type MedicationsContextValue = {
 
   getMedicationById: (id: string) => Medication | undefined;
   updateMedication: (id: string, data: Omit<Medication, "id">) => void;
+
+  togglePaused: (id: string) => void;
+  setPaused: (id: string, paused: boolean) => void;
 
   isDueToday: (med: Medication) => boolean;
 
@@ -57,6 +62,9 @@ function dateFromKey(key: string) {
 }
 
 function isDueOnDate(med: Medication, key: string) {
+  // ✅ Приостановленное не считаем “к приёму”
+  if (med.paused) return false;
+
   if (med.startDate && key < med.startDate) return false;
 
   if (med.repeat === "daily") return true;
@@ -118,6 +126,7 @@ export function MedicationsProvider({
       notes: "",
       repeat: "daily",
       startDate: dateKey(),
+      paused: false,
     },
     {
       id: "2",
@@ -129,6 +138,7 @@ export function MedicationsProvider({
       notes: "",
       repeat: "daily",
       startDate: dateKey(),
+      paused: false,
     },
     {
       id: "3",
@@ -140,6 +150,7 @@ export function MedicationsProvider({
       notes: "",
       repeat: "daily",
       startDate: dateKey(),
+      paused: false,
     },
   ]);
 
@@ -170,6 +181,8 @@ export function MedicationsProvider({
             ? data.dates
             : [dateKey()]
           : data.dates,
+
+      paused: data.paused ?? false,
     };
 
     setMedications((prev) => [
@@ -190,14 +203,33 @@ export function MedicationsProvider({
   ) => {
     const times = extractTimes(data as Medication);
 
-    const normalized: Omit<Medication, "id"> = {
-      ...data,
-      time: times[0] ?? data.time ?? "",
-      times: times.length ? times : data.times,
-    };
-
     setMedications((prev) =>
-      prev.map((m) => (m.id === id ? { id, ...normalized } : m)),
+      prev.map((m) => {
+        if (m.id !== id) return m;
+
+        const normalized: Omit<Medication, "id"> = {
+          ...data,
+          time: times[0] ?? data.time ?? "",
+          times: times.length ? times : data.times,
+
+          // ✅ если paused не передали — сохраняем текущее
+          paused: data.paused ?? m.paused ?? false,
+        };
+
+        return { id, ...normalized };
+      }),
+    );
+  };
+
+  const setPaused: MedicationsContextValue["setPaused"] = (id, paused) => {
+    setMedications((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, paused } : m)),
+    );
+  };
+
+  const togglePaused: MedicationsContextValue["togglePaused"] = (id) => {
+    setMedications((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, paused: !m.paused } : m)),
     );
   };
 
@@ -241,6 +273,8 @@ export function MedicationsProvider({
 
   const todayProgress = useMemo(() => {
     const today = dateKey();
+
+    // ✅ учитываем только не paused и которые должны быть сегодня
     const dueMeds = medications.filter((m) => isDueOnDate(m, today));
 
     const dueDoses = dueMeds.flatMap((m) => {
@@ -274,6 +308,8 @@ export function MedicationsProvider({
     addMedication,
     getMedicationById,
     updateMedication,
+    togglePaused,
+    setPaused,
     isDueToday,
     getTodayStatus,
     setTodayStatus,

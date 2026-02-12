@@ -124,13 +124,20 @@ function HeaderFade() {
 export default function MedicationsScreen() {
   const router = useRouter();
   const tabBarHeight = useBottomTabBarHeight();
-  const { medications } = useMedications();
+
+  const { medications, togglePaused } = useMedications();
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selected, setSelected] = useState<Medication | null>(null);
 
+  // ✅ Сначала активные, потом paused; внутри групп — сортировка по имени
   const list = useMemo(() => {
-    return [...medications].sort((a, b) => a.name.localeCompare(b.name, "ru"));
+    return [...medications].sort((a, b) => {
+      const pa = a.paused ? 1 : 0;
+      const pb = b.paused ? 1 : 0;
+      if (pa !== pb) return pa - pb; // active(0) -> paused(1)
+      return a.name.localeCompare(b.name, "ru");
+    });
   }, [medications]);
 
   const openActions = (m: Medication) => {
@@ -174,14 +181,17 @@ export default function MedicationsScreen() {
           const timesText = times.length ? times.join(" • ") : "—";
           const chipText = periodChipFromTimes(times, m.period);
 
+          const paused = !!m.paused;
+
+          const dosageRaw = String(m.dosage ?? "").trim();
+          const hasDosage = dosageRaw.length > 0 && dosageRaw !== "—";
+
           return (
             <TouchableOpacity
               key={m.id}
               activeOpacity={0.9}
-              onPress={() => goEdit(m.id)}
-              onLongPress={() => openActions(m)}
-              delayLongPress={300}
-              style={styles.card}
+              onPress={() => openActions(m)}
+              style={[styles.card, paused && styles.cardPaused]}
             >
               <View style={styles.topRow}>
                 <View style={styles.iconCircle}>
@@ -189,8 +199,52 @@ export default function MedicationsScreen() {
                 </View>
 
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.medName}>{m.name}</Text>
-                  <Text style={styles.dosage}>{m.dosage || "—"}</Text>
+                  {/* 1-я строка: название; если paused — приглушаем и делаем толстое зачёркивание */}
+                  {paused ? (
+                    <View style={styles.medNameWrap}>
+                      <Text
+                        style={[styles.medName, styles.medNamePausedText]}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                      >
+                        {m.name}
+                      </Text>
+                      <View pointerEvents="none" style={styles.medNameStrike} />
+                    </View>
+                  ) : (
+                    <Text
+                      style={styles.medName}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
+                      {m.name}
+                    </Text>
+                  )}
+
+                  {/* 2-я строка: дозировка (если активное — показываем “—”, если paused — скрываем при отсутствии) */}
+                  {paused ? (
+                    hasDosage ? (
+                      <Text style={styles.dosage}>{dosageRaw}</Text>
+                    ) : null
+                  ) : (
+                    <Text style={styles.dosage}>{dosageRaw || "—"}</Text>
+                  )}
+
+                  {/* Чип: всегда отдельной строкой:
+                      - если нет дозировки => после названия (2-я строка)
+                      - если дозировка есть => после дозировки (3-я строка) */}
+                  {paused ? (
+                    <View
+                      style={[
+                        styles.pauseChipRow,
+                        { marginTop: hasDosage ? 8 : 6 },
+                      ]}
+                    >
+                      <View style={styles.pauseChip}>
+                        <Text style={styles.pauseChipText}>ПРИОСТАНОВЛЕНО</Text>
+                      </View>
+                    </View>
+                  ) : null}
                 </View>
 
                 <View style={styles.periodChip}>
@@ -198,28 +252,35 @@ export default function MedicationsScreen() {
                 </View>
               </View>
 
-              <View style={styles.line}>
-                <Text style={styles.lineLabel}>Время приёма:</Text>
-                <Text style={styles.lineValue}>{timesText}</Text>
-              </View>
+              {/* paused — короткая карточка */}
+              {paused ? (
+                <View style={styles.pausedDivider} />
+              ) : (
+                <>
+                  <View style={styles.line}>
+                    <Text style={styles.lineLabel}>Время приёма:</Text>
+                    <Text style={styles.lineValue}>{timesText}</Text>
+                  </View>
 
-              <View style={styles.line}>
-                <Text style={styles.lineLabel}>{rep.label}</Text>
-                {rep.value ? (
-                  <Text style={styles.lineValue}>{rep.value}</Text>
-                ) : null}
-              </View>
+                  <View style={styles.line}>
+                    <Text style={styles.lineLabel}>{rep.label}</Text>
+                    {rep.value ? (
+                      <Text style={styles.lineValue}>{rep.value}</Text>
+                    ) : null}
+                  </View>
 
-              <View style={styles.line}>
-                <Text style={styles.lineLabel}>Начало приёма:</Text>
-                <Text style={styles.lineValue}>{getStartDateLabel(m)}</Text>
-              </View>
+                  <View style={styles.line}>
+                    <Text style={styles.lineLabel}>Начало приёма:</Text>
+                    <Text style={styles.lineValue}>{getStartDateLabel(m)}</Text>
+                  </View>
 
-              {!!m.notes && (
-                <View style={styles.notesBox}>
-                  <Text style={styles.notesLabel}>Заметки</Text>
-                  <Text style={styles.notesText}>{m.notes}</Text>
-                </View>
+                  {!!m.notes && (
+                    <View style={styles.notesBox}>
+                      <Text style={styles.notesLabel}>Заметки</Text>
+                      <Text style={styles.notesText}>{m.notes}</Text>
+                    </View>
+                  )}
+                </>
               )}
             </TouchableOpacity>
           );
@@ -229,9 +290,14 @@ export default function MedicationsScreen() {
       <MedicationActionsSheet
         visible={sheetOpen}
         title={selected?.name ?? "Лекарство"}
+        paused={!!selected?.paused}
         onClose={closeActions}
         onEdit={() => {
           if (selected) goEdit(selected.id);
+          closeActions();
+        }}
+        onTogglePause={() => {
+          if (selected) togglePaused(selected.id);
           closeActions();
         }}
       />
@@ -281,12 +347,19 @@ const styles = StyleSheet.create({
     borderColor: "rgba(148,163,184,0.14)",
   },
 
+  // paused заметно отличается по цвету
+  cardPaused: {
+    backgroundColor: "rgba(251,191,36,0.06)",
+    borderColor: "rgba(251,191,36,0.40)",
+  },
+
   topRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 12,
     marginBottom: 10,
   },
+
   iconCircle: {
     width: 36,
     height: 36,
@@ -296,10 +369,57 @@ const styles = StyleSheet.create({
     borderColor: "rgba(148,163,184,0.14)",
     alignItems: "center",
     justifyContent: "center",
+    marginTop: 2,
   },
 
-  medName: { color: "#F8FAFC", fontSize: 16, fontWeight: "900" },
+  medName: {
+    color: "#F8FAFC",
+    fontSize: 16,
+    fontWeight: "900",
+    lineHeight: 20,
+  },
+
+  // приглушённый цвет названия для paused
+  medNamePausedText: {
+    color: "#CBD5E1",
+  },
+
+  // контейнер для “толстого” зачёркивания
+  medNameWrap: {
+    position: "relative",
+    alignSelf: "flex-start",
+    maxWidth: "100%",
+    flexShrink: 1,
+  },
+
+  // толстая линия (цвет как у чипа)
+  medNameStrike: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    height: 2, // сделай 3 если хочешь ещё жирнее
+    backgroundColor: "#FBBF24",
+    top: 10, // середина при lineHeight=20
+    borderRadius: 2,
+  },
+
   dosage: { color: "#94A3B8", marginTop: 4, fontSize: 13, fontWeight: "800" },
+
+  pauseChipRow: { alignItems: "flex-start" },
+  pauseChip: {
+    backgroundColor: "rgba(251,191,36,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(251,191,36,0.35)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  pauseChipText: {
+    color: "#FBBF24",
+    fontWeight: "900",
+    fontSize: 10,
+    letterSpacing: 0.2,
+  },
 
   periodChip: {
     backgroundColor: "rgba(37,99,235,0.22)",
@@ -309,12 +429,18 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     maxWidth: 160,
+    marginTop: 2,
   },
   periodChipText: {
     color: "#E5E7EB",
     fontSize: 11,
     fontWeight: "900",
     letterSpacing: 0.3,
+  },
+
+  pausedDivider: {
+    borderTopWidth: 1,
+    borderTopColor: "rgba(148,163,184,0.10)",
   },
 
   line: {
