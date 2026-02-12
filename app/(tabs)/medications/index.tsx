@@ -7,10 +7,11 @@ import {
   Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Link } from "expo-router";
-import { useMemo } from "react";
+import { Link, useRouter } from "expo-router";
+import { useMemo, useState } from "react";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 
+import MedicationActionsSheet from "../../../components/MedicationActionsSheet";
 import {
   useMedications,
   type Medication,
@@ -103,16 +104,13 @@ function periodFromTime(time: string): Period {
 
 function periodChipFromTimes(times: string[], fallback: Period): string {
   if (!times || times.length === 0) return periodLabel(fallback).toUpperCase();
-
   const periods = Array.from(new Set(times.map(periodFromTime)));
   const order: Period[] = ["morning", "day", "evening"];
   periods.sort((a, b) => order.indexOf(a) - order.indexOf(b));
-
   return periods.map((p) => periodLabel(p).toUpperCase()).join(", ");
 }
 
 function HeaderFade() {
-  // Псевдо-градиент вниз (без библиотек)
   return (
     <View pointerEvents="none" style={styles.headerFade}>
       <View style={[styles.fadeRow, { opacity: 0.18 }]} />
@@ -124,16 +122,33 @@ function HeaderFade() {
 }
 
 export default function MedicationsScreen() {
+  const router = useRouter();
   const tabBarHeight = useBottomTabBarHeight();
   const { medications } = useMedications();
+
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [selected, setSelected] = useState<Medication | null>(null);
 
   const list = useMemo(() => {
     return [...medications].sort((a, b) => a.name.localeCompare(b.name, "ru"));
   }, [medications]);
 
+  const openActions = (m: Medication) => {
+    setSelected(m);
+    setSheetOpen(true);
+  };
+
+  const closeActions = () => {
+    setSheetOpen(false);
+    setSelected(null);
+  };
+
+  const goEdit = (id: string) => {
+    router.push(`/medications/edit/${id}`);
+  };
+
   return (
     <View style={styles.container}>
-      {/* фиксированный header */}
       <View style={styles.header}>
         <Text style={styles.title}>Мои лекарства</Text>
 
@@ -144,10 +159,8 @@ export default function MedicationsScreen() {
         </Link>
       </View>
 
-      {/* тень/градиент разделение */}
       <HeaderFade />
 
-      {/* скроллится только список */}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
@@ -162,7 +175,14 @@ export default function MedicationsScreen() {
           const chipText = periodChipFromTimes(times, m.period);
 
           return (
-            <View key={m.id} style={styles.card}>
+            <TouchableOpacity
+              key={m.id}
+              activeOpacity={0.9}
+              onPress={() => goEdit(m.id)}
+              onLongPress={() => openActions(m)}
+              delayLongPress={300}
+              style={styles.card}
+            >
               <View style={styles.topRow}>
                 <View style={styles.iconCircle}>
                   <Ionicons name="medical-outline" size={18} color="#38BDF8" />
@@ -201,10 +221,20 @@ export default function MedicationsScreen() {
                   <Text style={styles.notesText}>{m.notes}</Text>
                 </View>
               )}
-            </View>
+            </TouchableOpacity>
           );
         })}
       </ScrollView>
+
+      <MedicationActionsSheet
+        visible={sheetOpen}
+        title={selected?.name ?? "Лекарство"}
+        onClose={closeActions}
+        onEdit={() => {
+          if (selected) goEdit(selected.id);
+          closeActions();
+        }}
+      />
     </View>
   );
 }
@@ -220,8 +250,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-
-    // лёгкая тень
     ...Platform.select({
       web: { boxShadow: "0px 6px 18px rgba(0,0,0,0.35)" } as any,
       default: {
@@ -235,14 +263,8 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
 
-  headerFade: {
-    height: 14,
-    backgroundColor: "#050B18",
-  },
-  fadeRow: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
+  headerFade: { height: 14, backgroundColor: "#050B18" },
+  fadeRow: { flex: 1, backgroundColor: "#000" },
 
   title: { color: "#E5E7EB", fontSize: 20, fontWeight: "900" },
   addButton: { backgroundColor: "#38BDF8", borderRadius: 12, padding: 10 },
@@ -286,7 +308,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    maxWidth: 140,
+    maxWidth: 160,
   },
   periodChipText: {
     color: "#E5E7EB",
