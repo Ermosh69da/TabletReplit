@@ -13,6 +13,7 @@ import TodayStatusSheet from "../../components/TodayStatusSheet";
 import {
   type Period,
   useMedications,
+  type Medication,
 } from "../../components/MedicationsContext";
 
 function formatDateRu(d = new Date()) {
@@ -53,19 +54,88 @@ const periodConfig: Record<
   evening: { icon: "moon-outline", label: "вечер" },
 };
 
+function normalizeTime(t: string) {
+  const m = t.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return t;
+  return `${String(Number(m[1])).padStart(2, "0")}:${m[2]}`;
+}
+
+function getTimes(m: Medication): string[] {
+  const anyM: any = m;
+
+  if (Array.isArray(anyM.times) && anyM.times.length > 0) {
+    return Array.from(
+      new Set(
+        anyM.times
+          .map((t: any) => normalizeTime(String(t).trim()))
+          .filter(Boolean),
+      ),
+    ).sort();
+  }
+
+  const raw = typeof anyM.time === "string" ? anyM.time : "";
+  const matches = raw.match(/\b\d{1,2}:\d{2}\b/g) ?? [];
+  const normalized = matches.map(normalizeTime).filter(Boolean);
+  if (normalized.length > 0) return Array.from(new Set(normalized)).sort();
+  if (raw.trim()) return [normalizeTime(raw.trim())];
+  return [];
+}
+
+type Dose = {
+  key: string; // medId@time
+  med: Medication;
+  time: string;
+  period: Period;
+};
+
+function periodFromTime(time: string, fallback: Period): Period {
+  const h = Number(time.split(":")[0] ?? 0);
+  if (Number.isNaN(h)) return fallback;
+  if (h >= 5 && h <= 11) return "morning";
+  if (h >= 12 && h <= 17) return "day";
+  return "evening";
+}
+
 export default function HomeScreen() {
-  const { medications, todayProgress, getTodayStatus, setTodayStatus } =
-    useMedications();
+  const {
+    medications,
+    todayProgress,
+    getTodayStatus,
+    setTodayStatus,
+    isDueToday,
+  } = useMedications();
 
   const [period, setPeriod] = useState<Period>("evening");
 
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<{
+    medId: string;
+    time: string;
+  } | null>(null);
 
-  const selectedMed = useMemo(
-    () => medications.find((m) => m.id === selectedId) ?? null,
-    [medications, selectedId],
-  );
+  const selectedMed = useMemo(() => {
+    if (!selected) return null;
+    return medications.find((m) => m.id === selected.medId) ?? null;
+  }, [medications, selected]);
+
+  const allDoses = useMemo((): Dose[] => {
+    const dueMeds = medications.filter((m) => isDueToday(m));
+    const doses: Dose[] = [];
+
+    for (const med of dueMeds) {
+      const times = getTimes(med);
+      for (const t of times) {
+        doses.push({
+          key: `${med.id}@${t}`,
+          med,
+          time: t,
+          period: periodFromTime(t, med.period),
+        });
+      }
+    }
+
+    return doses.sort((a, b) => a.time.localeCompare(b.time));
+  }, [medications, isDueToday]);
 
   const periodStats = useMemo(() => {
     const res: Record<Period, { due: number; taken: number; skipped: number }> =
@@ -75,37 +145,33 @@ export default function HomeScreen() {
         evening: { due: 0, taken: 0, skipped: 0 },
       };
 
-    const list = medications.filter((m) => m.repeat === "daily");
-    for (const m of list) {
-      res[m.period].due += 1;
-      const st = getTodayStatus(m.id);
-      if (st === "taken") res[m.period].taken += 1;
-      if (st === "skipped") res[m.period].skipped += 1;
+    for (const d of allDoses) {
+      res[d.period].due += 1;
+      const st = getTodayStatus(d.med.id, d.time);
+      if (st === "taken") res[d.period].taken += 1;
+      if (st === "skipped") res[d.period].skipped += 1;
     }
 
     return res;
-  }, [medications, todayProgress, getTodayStatus]);
+  }, [allDoses, getTodayStatus, todayProgress]);
 
   const todayList = useMemo(() => {
-    return medications
-      .filter((m) => m.repeat === "daily" && m.period === period)
-      .sort((a, b) => a.time.localeCompare(b.time));
-  }, [medications, period]);
+    return allDoses.filter((d) => d.period === period);
+  }, [allDoses, period]);
 
-  const openSheet = (id: string) => {
-    setSelectedId(id);
+  const openSheet = (medId: string, time: string) => {
+    setSelected({ medId, time });
     setSheetOpen(true);
   };
 
   const closeSheet = () => {
     setSheetOpen(false);
-    setSelectedId(null);
+    setSelected(null);
   };
 
-  const onShortPress = (id: string) => {
-    const cur = getTodayStatus(id);
-    // tap: pending <-> taken (если было skipped, станет taken)
-    setTodayStatus(id, cur === "taken" ? "pending" : "taken");
+  const onShortPress = (medId: string, time: string) => {
+    const cur = getTodayStatus(medId, time);
+    setTodayStatus(medId, cur === "taken" ? "pending" : "taken", time);
   };
 
   return (
@@ -156,7 +222,7 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Period tiles */}
+        {/* Period tiles (оставляем как есть) */}
         <View style={styles.periodRow}>
           {(["morning", "day", "evening"] as Period[]).map((p) => {
             const active = p === period;
@@ -227,21 +293,21 @@ export default function HomeScreen() {
             </Text>
           </View>
         ) : (
-          todayList.map((m) => {
-            const status = getTodayStatus(m.id);
+          todayList.map((d) => {
+            const status = getTodayStatus(d.med.id, d.time);
             const isTaken = status === "taken";
             const isSkipped = status === "skipped";
 
             return (
               <TouchableOpacity
-                key={m.id}
+                key={d.key}
                 style={[
                   styles.planItem,
                   isTaken && styles.planItemTaken,
                   isSkipped && styles.planItemSkipped,
                 ]}
-                onPress={() => onShortPress(m.id)}
-                onLongPress={() => openSheet(m.id)}
+                onPress={() => onShortPress(d.med.id, d.time)}
+                onLongPress={() => openSheet(d.med.id, d.time)}
                 delayLongPress={350}
                 activeOpacity={0.88}
               >
@@ -257,7 +323,7 @@ export default function HomeScreen() {
                   <Text
                     style={[styles.planName, isTaken && styles.planNameDone]}
                   >
-                    {m.name}
+                    {d.med.name}
                   </Text>
 
                   <View style={styles.metaRow}>
@@ -266,9 +332,9 @@ export default function HomeScreen() {
                       size={14}
                       color={COLORS.muted2}
                     />
-                    <Text style={styles.metaText}>{m.time}</Text>
+                    <Text style={styles.metaText}>{d.time}</Text>
                     <Text style={styles.metaSep}>•</Text>
-                    <Text style={styles.metaText}>{m.dosage}</Text>
+                    <Text style={styles.metaText}>{d.med.dosage}</Text>
                   </View>
                 </View>
 
@@ -311,14 +377,17 @@ export default function HomeScreen() {
         visible={sheetOpen}
         title={selectedMed ? selectedMed.name : "Приём"}
         subtitle={
-          selectedMed
-            ? `${selectedMed.time} • ${selectedMed.dosage}`
+          selectedMed && selected
+            ? `${selected.time} • ${selectedMed.dosage}`
             : undefined
         }
-        currentStatus={selectedId ? getTodayStatus(selectedId) : "pending"}
+        currentStatus={
+          selected ? getTodayStatus(selected.medId, selected.time) : "pending"
+        }
         onClose={closeSheet}
         onSelect={(nextStatus) => {
-          if (selectedId) setTodayStatus(selectedId, nextStatus);
+          if (selected)
+            setTodayStatus(selected.medId, nextStatus, selected.time);
           closeSheet();
         }}
       />
@@ -530,7 +599,6 @@ const styles = StyleSheet.create({
     borderColor: "#334155",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "transparent",
   },
   checkOn: { backgroundColor: COLORS.blue, borderColor: COLORS.blue },
   checkSkipped: { backgroundColor: "#A3A3A3", borderColor: "#A3A3A3" },
