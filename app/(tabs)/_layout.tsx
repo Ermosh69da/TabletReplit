@@ -1,10 +1,41 @@
 import { Tabs } from "expo-router";
 import { View, Text, StyleSheet, Platform } from "react-native";
+import React, { useEffect, useState } from "react";
 
 import HomeIcon from "../../assets/icons/home.svg";
 import MedkitIcon from "../../assets/icons/medkit.svg";
 import HistoryIcon from "../../assets/icons/history.svg";
 import ProfileIcon from "../../assets/icons/profile.svg";
+
+function useWebKeyboardOpen() {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+
+    const vv = (globalThis as any)?.visualViewport;
+    if (!vv) return;
+
+    let baseHeight = vv.height;
+
+    const update = () => {
+      baseHeight = Math.max(baseHeight, vv.height);
+      const diff = baseHeight - vv.height;
+      setOpen(diff > 80);
+    };
+
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
+
+  return open;
+}
 
 function TabButton({
   focused,
@@ -16,9 +47,16 @@ function TabButton({
   label: string;
 }) {
   return (
-    <View style={[styles.tile, focused ? styles.tileActive : styles.tileInactive]}>
+    <View
+      style={[styles.tile, focused ? styles.tileActive : styles.tileInactive]}
+    >
       <Icon width={24} height={24} fill={focused ? "#FFFFFF" : "#9CA3AF"} />
-      <Text style={[styles.label, focused ? styles.labelActive : styles.labelInactive]}>
+      <Text
+        style={[
+          styles.label,
+          focused ? styles.labelActive : styles.labelInactive,
+        ]}
+      >
         {label}
       </Text>
     </View>
@@ -26,12 +64,23 @@ function TabButton({
 }
 
 export default function TabsLayout() {
+  const webKeyboardOpen = useWebKeyboardOpen();
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: false,
-        tabBarStyle: styles.tabBar,
+
+        // iOS/Android: прячем таббар при открытой клавиатуре
+        tabBarHideOnKeyboard: true,
+
+        // Web: тоже прячем, чтобы не "всплывал" над клавиатурой
+        tabBarStyle: [
+          styles.tabBar,
+          Platform.OS === "web" && webKeyboardOpen ? { display: "none" } : null,
+        ],
+
         tabBarItemStyle: { height: 100, padding: 0 },
       }}
     >

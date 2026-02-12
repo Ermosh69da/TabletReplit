@@ -4,10 +4,12 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Link } from "expo-router";
 import { useMemo } from "react";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 
 import {
   useMedications,
@@ -69,9 +71,6 @@ function repeatLine(m: Medication) {
   return { label: "Даты приёма:", value: formatDates((m as any).dates) };
 }
 
-/** 1) берём времена из m.times[], если оно есть
- * 2) иначе вытаскиваем все HH:MM из строки m.time (на случай "09:00 • 15:21")
- */
 function getTimes(m: Medication): string[] {
   const anyM = m as any;
 
@@ -91,9 +90,7 @@ function getTimes(m: Medication): string[] {
     })
     .filter(Boolean);
 
-  // если там было одно значение без совпадения — попробуем вернуть как есть
   if (normalized.length === 0 && raw.trim()) return [raw.trim()];
-
   return Array.from(new Set(normalized)).sort();
 }
 
@@ -108,15 +105,26 @@ function periodChipFromTimes(times: string[], fallback: Period): string {
   if (!times || times.length === 0) return periodLabel(fallback).toUpperCase();
 
   const periods = Array.from(new Set(times.map(periodFromTime)));
-
-  // порядок как в табах: утро -> день -> вечер
   const order: Period[] = ["morning", "day", "evening"];
   periods.sort((a, b) => order.indexOf(a) - order.indexOf(b));
 
   return periods.map((p) => periodLabel(p).toUpperCase()).join(", ");
 }
 
+function HeaderFade() {
+  // Псевдо-градиент вниз (без библиотек)
+  return (
+    <View pointerEvents="none" style={styles.headerFade}>
+      <View style={[styles.fadeRow, { opacity: 0.18 }]} />
+      <View style={[styles.fadeRow, { opacity: 0.12 }]} />
+      <View style={[styles.fadeRow, { opacity: 0.08 }]} />
+      <View style={[styles.fadeRow, { opacity: 0.04 }]} />
+    </View>
+  );
+}
+
 export default function MedicationsScreen() {
+  const tabBarHeight = useBottomTabBarHeight();
   const { medications } = useMedications();
 
   const list = useMemo(() => {
@@ -125,19 +133,28 @@ export default function MedicationsScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* HEADER */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Мои лекарства</Text>
+      {/* фиксированный header */}
+      <View style={styles.header}>
+        <Text style={styles.title}>Мои лекарства</Text>
 
-          <Link href="/medications/new" asChild>
-            <TouchableOpacity style={styles.addButton} activeOpacity={0.85}>
-              <Ionicons name="add" size={24} color="#0B1220" />
-            </TouchableOpacity>
-          </Link>
-        </View>
+        <Link href="/medications/new" asChild>
+          <TouchableOpacity style={styles.addButton} activeOpacity={0.85}>
+            <Ionicons name="add" size={24} color="#0B1220" />
+          </TouchableOpacity>
+        </Link>
+      </View>
 
-        {/* LIST */}
+      {/* тень/градиент разделение */}
+      <HeaderFade />
+
+      {/* скроллится только список */}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: tabBarHeight + 24 },
+        ]}
+      >
         {list.map((m) => {
           const rep = repeatLine(m);
           const times = getTimes(m);
@@ -146,7 +163,6 @@ export default function MedicationsScreen() {
 
           return (
             <View key={m.id} style={styles.card}>
-              {/* Top */}
               <View style={styles.topRow}>
                 <View style={styles.iconCircle}>
                   <Ionicons name="medical-outline" size={18} color="#38BDF8" />
@@ -162,13 +178,11 @@ export default function MedicationsScreen() {
                 </View>
               </View>
 
-              {/* Time */}
               <View style={styles.line}>
                 <Text style={styles.lineLabel}>Время приёма:</Text>
                 <Text style={styles.lineValue}>{timesText}</Text>
               </View>
 
-              {/* Repeat */}
               <View style={styles.line}>
                 <Text style={styles.lineLabel}>{rep.label}</Text>
                 {rep.value ? (
@@ -176,13 +190,11 @@ export default function MedicationsScreen() {
                 ) : null}
               </View>
 
-              {/* Start */}
               <View style={styles.line}>
                 <Text style={styles.lineLabel}>Начало приёма:</Text>
                 <Text style={styles.lineValue}>{getStartDateLabel(m)}</Text>
               </View>
 
-              {/* Notes */}
               {!!m.notes && (
                 <View style={styles.notesBox}>
                   <Text style={styles.notesLabel}>Заметки</Text>
@@ -192,8 +204,6 @@ export default function MedicationsScreen() {
             </View>
           );
         })}
-
-        <View style={{ height: 120 }} />
       </ScrollView>
     </View>
   );
@@ -201,17 +211,44 @@ export default function MedicationsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#050B18" },
-  content: { padding: 16, paddingBottom: 40 },
 
   header: {
-    marginTop: 40,
+    paddingTop: 40,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    backgroundColor: "#050B18",
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 18,
+
+    // лёгкая тень
+    ...Platform.select({
+      web: { boxShadow: "0px 6px 18px rgba(0,0,0,0.35)" } as any,
+      default: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.25,
+        shadowRadius: 10,
+        elevation: 10,
+      },
+    }),
+    zIndex: 10,
   },
+
+  headerFade: {
+    height: 14,
+    backgroundColor: "#050B18",
+  },
+  fadeRow: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
+
   title: { color: "#E5E7EB", fontSize: 20, fontWeight: "900" },
   addButton: { backgroundColor: "#38BDF8", borderRadius: 12, padding: 10 },
+
+  scroll: { flex: 1 },
+  content: { padding: 16 },
 
   card: {
     backgroundColor: "#0E1629",
@@ -267,12 +304,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "rgba(148,163,184,0.10)",
   },
-  lineLabel: {
-    color: "#94A3B8",
-    fontSize: 12,
-    fontWeight: "900",
-    width: 120,
-  },
+  lineLabel: { color: "#94A3B8", fontSize: 12, fontWeight: "900", width: 120 },
   lineValue: {
     flex: 1,
     textAlign: "right",

@@ -5,9 +5,11 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Link } from "expo-router";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 
 import TodayStatusSheet from "../../components/TodayStatusSheet";
 import {
@@ -96,7 +98,20 @@ function periodFromTime(time: string, fallback: Period): Period {
   return "evening";
 }
 
+function HeaderFade() {
+  return (
+    <View pointerEvents="none" style={styles.headerFade}>
+      <View style={[styles.fadeRow, { opacity: 0.18 }]} />
+      <View style={[styles.fadeRow, { opacity: 0.12 }]} />
+      <View style={[styles.fadeRow, { opacity: 0.08 }]} />
+      <View style={[styles.fadeRow, { opacity: 0.04 }]} />
+    </View>
+  );
+}
+
 export default function HomeScreen() {
+  const tabBarHeight = useBottomTabBarHeight();
+
   const {
     medications,
     todayProgress,
@@ -104,7 +119,6 @@ export default function HomeScreen() {
     setTodayStatus,
     isDueToday,
   } = useMedications();
-
   const [period, setPeriod] = useState<Period>("evening");
 
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -155,9 +169,10 @@ export default function HomeScreen() {
     return res;
   }, [allDoses, getTodayStatus, todayProgress]);
 
-  const todayList = useMemo(() => {
-    return allDoses.filter((d) => d.period === period);
-  }, [allDoses, period]);
+  const todayList = useMemo(
+    () => allDoses.filter((d) => d.period === period),
+    [allDoses, period],
+  );
 
   const openSheet = (medId: string, time: string) => {
     setSelected({ medId, time });
@@ -176,21 +191,29 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* Top bar */}
-        <View style={styles.top}>
-          <View>
-            <Text style={styles.h1}>Прими пилюльку !!!</Text>
-            <Text style={styles.date}>{formatDateRu()}</Text>
-          </View>
-
-          <Link href="/medications/new" asChild>
-            <TouchableOpacity style={styles.plus}>
-              <Ionicons name="add" size={24} color="#0B1220" />
-            </TouchableOpacity>
-          </Link>
+      {/* ✅ ФИКСИРОВАННЫЙ TOP HEADER */}
+      <View style={styles.topHeader}>
+        <View>
+          <Text style={styles.h1}>Прими пилюльку !!!</Text>
+          <Text style={styles.date}>{formatDateRu()}</Text>
         </View>
 
+        <Link href="/medications/new" asChild>
+          <TouchableOpacity style={styles.plus}>
+            <Ionicons name="add" size={24} color="#0B1220" />
+          </TouchableOpacity>
+        </Link>
+      </View>
+
+      <HeaderFade />
+
+      {/* ✅ Скроллится всё ниже */}
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: tabBarHeight + 24 },
+        ]}
+      >
         {/* Progress */}
         <View style={styles.progressCard}>
           <View style={styles.progressRow}>
@@ -222,7 +245,7 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Period tiles (оставляем как есть) */}
+        {/* Period tiles */}
         <View style={styles.periodRow}>
           {(["morning", "day", "evening"] as Period[]).map((p) => {
             const active = p === period;
@@ -339,19 +362,32 @@ export default function HomeScreen() {
                 </View>
 
                 <View style={styles.rightCol}>
-                  {isTaken ? (
-                    <View style={[styles.badge, styles.badgeTaken]}>
-                      <Text style={styles.badgeTextTaken}>принято</Text>
-                    </View>
-                  ) : isSkipped ? (
-                    <View style={[styles.badge, styles.badgeSkipped]}>
-                      <Text style={styles.badgeTextSkipped}>пропущено</Text>
-                    </View>
-                  ) : (
-                    <View style={[styles.badge, styles.badgePending]}>
-                      <Text style={styles.badgeTextPending}>ожидает</Text>
-                    </View>
-                  )}
+                  <View
+                    style={[
+                      styles.badge,
+                      isTaken
+                        ? styles.badgeTaken
+                        : isSkipped
+                          ? styles.badgeSkipped
+                          : styles.badgePending,
+                    ]}
+                  >
+                    <Text
+                      style={
+                        isTaken
+                          ? styles.badgeTextTaken
+                          : isSkipped
+                            ? styles.badgeTextSkipped
+                            : styles.badgeTextPending
+                      }
+                    >
+                      {isTaken
+                        ? "принято"
+                        : isSkipped
+                          ? "пропущено"
+                          : "ожидает"}
+                    </Text>
+                  </View>
 
                   <View
                     style={[
@@ -397,18 +433,37 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
-  content: { padding: 16, paddingBottom: 40 },
 
-  top: {
-    marginTop: 40,
+  topHeader: {
+    paddingTop: 40,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    backgroundColor: COLORS.bg,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 14,
+
+    ...Platform.select({
+      web: { boxShadow: "0px 6px 18px rgba(0,0,0,0.35)" } as any,
+      default: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.25,
+        shadowRadius: 10,
+        elevation: 10,
+      },
+    }),
+    zIndex: 10,
   },
+
+  headerFade: { height: 14, backgroundColor: COLORS.bg },
+  fadeRow: { flex: 1, backgroundColor: "#000" },
+
   h1: { color: COLORS.title, fontSize: 20, fontWeight: "800" },
   date: { color: COLORS.muted, marginTop: 4 },
   plus: { backgroundColor: COLORS.blue, borderRadius: 12, padding: 10 },
+
+  content: { padding: 16 },
 
   progressCard: {
     backgroundColor: COLORS.surface,
@@ -430,7 +485,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   progressMeta: { color: COLORS.blue, fontSize: 12, fontWeight: "800" },
-
   progressMainRow: {
     marginTop: 6,
     flexDirection: "row",
@@ -450,7 +504,6 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   progressPillText: { color: COLORS.muted, fontWeight: "800", fontSize: 12 },
-
   progressBarBg: {
     height: 8,
     backgroundColor: COLORS.surface2,

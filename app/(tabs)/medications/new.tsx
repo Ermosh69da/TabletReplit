@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -35,6 +35,11 @@ function ruDateFromKey(key: string) {
   return `${d}.${m}.${y}`;
 }
 
+function dateFromKey(key: string) {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1, 12, 0, 0);
+}
+
 function formatTime(d: Date) {
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
@@ -47,11 +52,38 @@ function normalizeTime(t: string) {
   return `${String(Number(m[1])).padStart(2, "0")}:${m[2]}`;
 }
 
+// Домой использует period — вычисляем по первому времени
 function periodFromTime(time: string): Period {
   const h = Number(time.split(":")[0] ?? 0);
   if (h >= 5 && h <= 11) return "morning";
   if (h >= 12 && h <= 17) return "day";
   return "evening";
+}
+
+/**
+ * startDate в режиме "weekdays" всегда ближайшая к СЕГОДНЯ:
+ * - если сегодня выбран -> сегодня
+ * - иначе ближайший следующий выбранный день
+ */
+function nextStartDateFromToday(weekdays: number[]) {
+  if (!weekdays || weekdays.length === 0) return dateKey();
+
+  const d = new Date();
+  d.setHours(12, 0, 0, 0);
+
+  for (let i = 0; i <= 14; i++) {
+    const dow = d.getDay(); // 0..6
+    if (weekdays.includes(dow)) return dateKey(d);
+    d.setDate(d.getDate() + 1);
+  }
+
+  return dateKey();
+}
+
+function dowShortRuFromKey(key: string) {
+  const d = dateFromKey(key);
+  const map = ["ВС", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ"];
+  return map[d.getDay()] ?? "—";
 }
 
 const DOW = [
@@ -73,7 +105,7 @@ export default function NewMedicationScreen() {
   const [dosage, setDosage] = useState("");
   const [notes, setNotes] = useState("");
 
-  // multi time picker
+  // times
   const initialTime = useMemo(() => {
     const d = new Date();
     d.setHours(9);
@@ -83,16 +115,29 @@ export default function NewMedicationScreen() {
   }, []);
   const [timeDate, setTimeDate] = useState<Date>(initialTime);
   const [showTimePicker, setShowTimePicker] = useState(false);
-
   const [times, setTimes] = useState<string[]>(["09:00"]);
+
+  // web time modal fallback
+  const [webTimeOpen, setWebTimeOpen] = useState(false);
+  const [webTimeDraft, setWebTimeDraft] = useState(times[0] ?? "09:00");
 
   const addPickedTime = (t: string) => {
     const v = normalizeTime(t);
+    if (!v) return;
     setTimes((prev) => Array.from(new Set([...prev, v])).sort());
   };
 
   const removeTime = (t: string) => {
     setTimes((prev) => prev.filter((x) => x !== t));
+  };
+
+  const openTimePicker = () => {
+    if (Platform.OS === "web") {
+      setWebTimeDraft(times[0] ?? "09:00");
+      setWebTimeOpen(true);
+    } else {
+      setShowTimePicker(true);
+    }
   };
 
   // repeat
@@ -101,12 +146,34 @@ export default function NewMedicationScreen() {
   const [startDate, setStartDate] = useState<string>(dateKey());
   const [startDatePickerOpen, setStartDatePickerOpen] = useState(false);
 
+  // web start date modal fallback (используем только в daily)
+  const [webStartOpen, setWebStartOpen] = useState(false);
+  const [webStartDraft, setWebStartDraft] = useState(startDate);
+
+  const openStartDatePicker = () => {
+    if (Platform.OS === "web") {
+      setWebStartDraft(startDate);
+      setWebStartOpen(true);
+    } else {
+      setStartDatePickerOpen(true);
+    }
+  };
+
   const [weekdays, setWeekdays] = useState<number[]>([1, 2, 3, 4, 5]);
 
   const [dates, setDates] = useState<string[]>([]);
   const [calendarOpen, setCalendarOpen] = useState(false);
 
   const canSave = name.trim().length > 0 && times.length > 0;
+
+  // auto-start only for weekdays
+  useEffect(() => {
+    if (repeatMode !== "weekdays") return;
+    if (!weekdays || weekdays.length === 0) return;
+
+    const next = nextStartDateFromToday(weekdays);
+    setStartDate((prev) => (prev === next ? prev : next));
+  }, [repeatMode, weekdays]);
 
   const toggleWeekday = (d: number) => {
     setWeekdays((prev) =>
@@ -131,6 +198,11 @@ export default function NewMedicationScreen() {
     return obj;
   }, [dates]);
 
+  const autoStartHint = useMemo(() => {
+    if (repeatMode !== "weekdays") return "";
+    return `Ближайший приём: ${dowShortRuFromKey(startDate)} (${ruDateFromKey(startDate)})`;
+  }, [repeatMode, startDate]);
+
   const onSave = () => {
     if (!canSave) return;
 
@@ -140,9 +212,11 @@ export default function NewMedicationScreen() {
     addMedication({
       name: name.trim(),
       dosage: dosage.trim(),
-      time: firstTime, // для совместимости
-      times: sortedTimes, // главное — все времена
-      period: periodFromTime(firstTime), // fallback
+
+      time: firstTime,
+      times: sortedTimes,
+      period: periodFromTime(firstTime),
+
       notes: notes.trim(),
 
       repeat: repeatMode,
@@ -164,29 +238,37 @@ export default function NewMedicationScreen() {
     router.replace("/medications");
   };
 
-  const saveBarBottom = tabBarHeight + 12;
-
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
+        <TouchableOpacity style={styles.sideBtn} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={22} color="#3B82F6" />
           <Text style={styles.backText}>Назад</Text>
         </TouchableOpacity>
 
         <Text style={styles.headerTitle}>Новое лекарство</Text>
-        <View style={{ width: 60 }} />
+
+        <TouchableOpacity
+          style={[styles.saveTopBtn, !canSave && styles.saveTopBtnDisabled]}
+          onPress={onSave}
+          disabled={!canSave}
+          activeOpacity={0.85}
+        >
+          <Text
+            style={[styles.saveTopText, !canSave && styles.saveTopTextDisabled]}
+          >
+            Сохранить
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: saveBarBottom + 90 },
+          { paddingBottom: tabBarHeight + 24 },
         ]}
+        keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.label}>
           <Ionicons name="pricetag-outline" size={14} color="#9CA3AF" />{" "}
@@ -229,7 +311,7 @@ export default function NewMedicationScreen() {
 
           <TouchableOpacity
             style={styles.addTimeChip}
-            onPress={() => setShowTimePicker(true)}
+            onPress={openTimePicker}
             activeOpacity={0.85}
           >
             <Ionicons name="add" size={18} color="#0B1220" />
@@ -237,7 +319,8 @@ export default function NewMedicationScreen() {
           </TouchableOpacity>
         </View>
 
-        {showTimePicker && (
+        {/* Native time picker */}
+        {showTimePicker && Platform.OS !== "web" && (
           <DateTimePicker
             value={timeDate}
             mode="time"
@@ -312,11 +395,12 @@ export default function NewMedicationScreen() {
           </TouchableOpacity>
         </View>
 
-        {(repeatMode === "daily" || repeatMode === "weekdays") && (
+        {/* DAILY: старт редактируемый */}
+        {repeatMode === "daily" && (
           <>
             <TouchableOpacity
               style={styles.startRow}
-              onPress={() => setStartDatePickerOpen(true)}
+              onPress={openStartDatePicker}
               activeOpacity={0.85}
             >
               <Text style={styles.startText}>
@@ -325,9 +409,9 @@ export default function NewMedicationScreen() {
               <Ionicons name="calendar" size={18} color="#60A5FA" />
             </TouchableOpacity>
 
-            {startDatePickerOpen && (
+            {startDatePickerOpen && Platform.OS !== "web" && (
               <DateTimePicker
-                value={new Date()}
+                value={dateFromKey(startDate)}
                 mode="date"
                 display={Platform.OS === "ios" ? "spinner" : "default"}
                 onChange={(_, selected) => {
@@ -339,31 +423,43 @@ export default function NewMedicationScreen() {
           </>
         )}
 
+        {/* WEEKDAYS: старт авто, НЕ редактируемый + информативная подсказка */}
         {repeatMode === "weekdays" && (
-          <View style={styles.weekdaysRow}>
-            {DOW.map((d) => {
-              const active = weekdays.includes(d.key);
-              return (
-                <TouchableOpacity
-                  key={d.key}
-                  onPress={() => toggleWeekday(d.key)}
-                  style={[styles.dayChip, active && styles.dayChipActive]}
-                  activeOpacity={0.85}
-                >
-                  <Text
-                    style={[
-                      styles.dayChipText,
-                      active && styles.dayChipTextActive,
-                    ]}
+          <>
+            <View style={[styles.startRow, styles.startRowDisabled]}>
+              <Text style={styles.startText}>
+                Начало (авто): ({ruDateFromKey(startDate)})
+              </Text>
+              <Ionicons name="sync-outline" size={18} color="#64748B" />
+            </View>
+            <Text style={styles.autoHint}>{autoStartHint}</Text>
+
+            <View style={styles.weekdaysRow}>
+              {DOW.map((d) => {
+                const active = weekdays.includes(d.key);
+                return (
+                  <TouchableOpacity
+                    key={d.key}
+                    onPress={() => toggleWeekday(d.key)}
+                    style={[styles.dayChip, active && styles.dayChipActive]}
+                    activeOpacity={0.85}
                   >
-                    {d.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+                    <Text
+                      style={[
+                        styles.dayChipText,
+                        active && styles.dayChipTextActive,
+                      ]}
+                    >
+                      {d.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
         )}
 
+        {/* DATES */}
         {repeatMode === "dates" && (
           <View style={{ marginTop: 10 }}>
             <TouchableOpacity
@@ -377,11 +473,25 @@ export default function NewMedicationScreen() {
               <Ionicons name="calendar-outline" size={18} color="#60A5FA" />
             </TouchableOpacity>
 
-            {dates.length === 0 ? (
+            {dates.length > 0 ? (
+              <View style={styles.datesWrap}>
+                {dates.map((d) => (
+                  <View key={d} style={styles.dateChip}>
+                    <Text style={styles.dateChipText}>{ruDateFromKey(d)}</Text>
+                    <TouchableOpacity
+                      onPress={() => toggleDate(d)}
+                      hitSlop={10}
+                    >
+                      <Ionicons name="close" size={14} color="#94A3B8" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            ) : (
               <Text style={styles.hintText}>
                 Выбери одну или несколько дат в календаре
               </Text>
-            ) : null}
+            )}
           </View>
         )}
 
@@ -398,18 +508,6 @@ export default function NewMedicationScreen() {
           multiline
         />
       </ScrollView>
-
-      {/* Fixed Save */}
-      <View style={[styles.saveBar, { bottom: saveBarBottom }]}>
-        <TouchableOpacity
-          style={[styles.saveButton, !canSave && styles.saveButtonDisabled]}
-          onPress={onSave}
-          disabled={!canSave}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.saveText}>Сохранить</Text>
-        </TouchableOpacity>
-      </View>
 
       {/* Calendar modal */}
       <Modal
@@ -468,6 +566,116 @@ export default function NewMedicationScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Web time picker modal */}
+      <Modal
+        visible={webTimeOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setWebTimeOpen(false)}
+      >
+        <Pressable
+          style={styles.overlay}
+          onPress={() => setWebTimeOpen(false)}
+        />
+        <View style={styles.webPickerWrap}>
+          <View style={styles.webPickerCard}>
+            <View style={styles.webPickerHeader}>
+              <Text style={styles.webPickerTitle}>Выбор времени</Text>
+              <TouchableOpacity
+                onPress={() => setWebTimeOpen(false)}
+                hitSlop={10}
+              >
+                <Ionicons name="close" size={20} color="#94A3B8" />
+              </TouchableOpacity>
+            </View>
+
+            {Platform.OS === "web" ? (
+              // eslint-disable-next-line react-native/no-raw-text
+              <input
+                type="time"
+                value={webTimeDraft}
+                onChange={(e: any) => setWebTimeDraft(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: 12,
+                  borderRadius: 12,
+                  border: "1px solid rgba(148,163,184,0.14)",
+                  background: "#0B1220",
+                  color: "#E5E7EB",
+                  fontSize: 16,
+                }}
+              />
+            ) : null}
+
+            <TouchableOpacity
+              style={[styles.calendarBtn, { marginTop: 12 }]}
+              onPress={() => {
+                addPickedTime(webTimeDraft);
+                setWebTimeOpen(false);
+              }}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.calendarBtnText}>Добавить</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Web start date picker modal (daily) */}
+      <Modal
+        visible={webStartOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setWebStartOpen(false)}
+      >
+        <Pressable
+          style={styles.overlay}
+          onPress={() => setWebStartOpen(false)}
+        />
+        <View style={styles.webPickerWrap}>
+          <View style={styles.webPickerCard}>
+            <View style={styles.webPickerHeader}>
+              <Text style={styles.webPickerTitle}>Дата начала</Text>
+              <TouchableOpacity
+                onPress={() => setWebStartOpen(false)}
+                hitSlop={10}
+              >
+                <Ionicons name="close" size={20} color="#94A3B8" />
+              </TouchableOpacity>
+            </View>
+
+            {Platform.OS === "web" ? (
+              // eslint-disable-next-line react-native/no-raw-text
+              <input
+                type="date"
+                value={webStartDraft}
+                onChange={(e: any) => setWebStartDraft(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: 12,
+                  borderRadius: 12,
+                  border: "1px solid rgba(148,163,184,0.14)",
+                  background: "#0B1220",
+                  color: "#E5E7EB",
+                  fontSize: 16,
+                }}
+              />
+            ) : null}
+
+            <TouchableOpacity
+              style={[styles.calendarBtn, { marginTop: 12 }]}
+              onPress={() => {
+                if (webStartDraft) setStartDate(webStartDraft);
+                setWebStartOpen(false);
+              }}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.calendarBtnText}>Готово</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -481,7 +689,7 @@ const styles = StyleSheet.create({
   },
 
   header: { flexDirection: "row", alignItems: "center", marginBottom: 14 },
-  backButton: { flexDirection: "row", alignItems: "center", width: 60 },
+  sideBtn: { width: 84, flexDirection: "row", alignItems: "center" },
   backText: { color: "#3B82F6", fontSize: 16, marginLeft: 4 },
   headerTitle: {
     flex: 1,
@@ -491,7 +699,13 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
+  saveTopBtn: { width: 84, alignItems: "flex-end", justifyContent: "center" },
+  saveTopBtnDisabled: { opacity: 0.5 },
+  saveTopText: { color: "#38BDF8", fontSize: 16, fontWeight: "800" },
+  saveTopTextDisabled: { color: "#64748B" },
+
   scrollContent: { paddingBottom: 10 },
+
   label: {
     color: "#9CA3AF",
     marginTop: 14,
@@ -565,7 +779,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  startRowDisabled: { opacity: 0.9 },
   startText: { color: "#E5E7EB", fontWeight: "700", fontSize: 13 },
+
+  autoHint: {
+    marginTop: 8,
+    color: "#94A3B8",
+    fontSize: 12,
+    fontWeight: "800",
+  },
 
   weekdaysRow: {
     marginTop: 10,
@@ -602,24 +824,27 @@ const styles = StyleSheet.create({
   pickDatesText: { color: "#E5E7EB", fontWeight: "800" },
   hintText: { marginTop: 8, color: "#64748B", fontSize: 12, fontWeight: "700" },
 
-  notes: { height: 100, textAlignVertical: "top" },
-
-  saveBar: { position: "absolute", left: 16, right: 16 },
-  saveButton: {
-    backgroundColor: "#2563EB",
-    borderRadius: 14,
-    paddingVertical: 16,
+  datesWrap: { marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  dateChip: {
+    flexDirection: "row",
     alignItems: "center",
+    gap: 8,
+    backgroundColor: "#0E1629",
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: "rgba(56,189,248,0.35)",
+    borderColor: "rgba(148,163,184,0.14)",
   },
-  saveButtonDisabled: { opacity: 0.5 },
-  saveText: { color: "#FFFFFF", fontSize: 18, fontWeight: "700" },
+  dateChipText: { color: "#E5E7EB", fontWeight: "800", fontSize: 12 },
+
+  notes: { height: 100, textAlignVertical: "top" },
 
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.55)",
   },
+
   calendarWrap: { flex: 1, justifyContent: "flex-end", padding: 16 },
   calendarCard: {
     backgroundColor: "#0E1629",
@@ -654,4 +879,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   calendarBtnText: { color: "#FFFFFF", fontWeight: "900" },
+
+  webPickerWrap: { flex: 1, justifyContent: "flex-end", padding: 16 },
+  webPickerCard: {
+    backgroundColor: "#0E1629",
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.14)",
+  },
+  webPickerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  webPickerTitle: { color: "#E5E7EB", fontWeight: "900", fontSize: 16 },
 });
