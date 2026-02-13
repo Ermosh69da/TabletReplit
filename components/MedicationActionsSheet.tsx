@@ -19,7 +19,6 @@ type Props = {
   onEdit: () => void;
   onClose: () => void;
 
-  // заглушка
   onDelete?: () => void;
 };
 
@@ -30,6 +29,7 @@ export default function MedicationActionsSheet({
   onTogglePause,
   onEdit,
   onClose,
+  onDelete,
 }: Props) {
   return (
     <Modal
@@ -38,18 +38,28 @@ export default function MedicationActionsSheet({
       animationType="fade"
       onRequestClose={onClose}
     >
+      {/* overlay */}
       <Pressable style={styles.overlay} onPress={onClose} />
 
-      <View style={styles.wrap}>
-        <View style={styles.sheet}>
+      {/* ВАЖНО ДЛЯ WEB: zIndex + pointerEvents чтобы overlay не перекрывал клики */}
+      <View style={styles.wrap} pointerEvents="box-none">
+        <View style={styles.sheet} pointerEvents="auto">
           <Text style={styles.title}>{title}</Text>
 
-          <TouchableOpacity style={styles.action} onPress={onEdit}>
+          <TouchableOpacity
+            style={styles.action}
+            onPress={onEdit}
+            activeOpacity={0.85}
+          >
             <Ionicons name="create-outline" size={20} color="#38BDF8" />
             <Text style={styles.actionText}>Редактировать</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.action} onPress={onTogglePause}>
+          <TouchableOpacity
+            style={styles.action}
+            onPress={onTogglePause}
+            activeOpacity={0.85}
+          >
             <Ionicons
               name={paused ? "play-outline" : "pause-outline"}
               size={20}
@@ -60,12 +70,29 @@ export default function MedicationActionsSheet({
             </Text>
           </TouchableOpacity>
 
-          <View style={[styles.action, styles.disabled]}>
-            <Ionicons name="trash-outline" size={20} color="#64748B" />
-            <Text style={styles.actionTextMuted}>Удалить (позже)</Text>
-          </View>
+          {onDelete ? (
+            <TouchableOpacity
+              style={[styles.action, styles.actionDelete]}
+              onPress={onDelete}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="trash-outline" size={20} color="#EF4444" />
+              <Text style={[styles.actionText, styles.actionTextDelete]}>
+                Удалить
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={[styles.action, styles.disabled]}>
+              <Ionicons name="trash-outline" size={20} color="#64748B" />
+              <Text style={styles.actionTextMuted}>Удалить (позже)</Text>
+            </View>
+          )}
 
-          <TouchableOpacity style={styles.cancel} onPress={onClose}>
+          <TouchableOpacity
+            style={styles.cancel}
+            onPress={onClose}
+            activeOpacity={0.85}
+          >
             <Text style={styles.cancelText}>Отмена</Text>
           </TouchableOpacity>
         </View>
@@ -78,8 +105,14 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.55)",
+    zIndex: 1,
   },
-  wrap: { flex: 1, justifyContent: "flex-end", padding: 16 },
+  wrap: {
+    flex: 1,
+    justifyContent: "flex-end",
+    padding: 16,
+    zIndex: 2,
+  },
   sheet: {
     backgroundColor: "#0E1629",
     borderRadius: 16,
@@ -102,6 +135,15 @@ const styles = StyleSheet.create({
     borderColor: "rgba(148,163,184,0.14)",
   },
   actionText: { color: "#E5E7EB", fontWeight: "800" },
+
+  actionDelete: {
+    borderColor: "rgba(239,68,68,0.35)",
+    backgroundColor: "rgba(239,68,68,0.06)",
+  },
+  actionTextDelete: {
+    color: "#FCA5A5",
+  },
+
   actionTextMuted: { color: "#94A3B8", fontWeight: "800" },
   disabled: { opacity: 0.6 },
 

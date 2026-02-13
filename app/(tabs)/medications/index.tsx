@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Platform,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Link, useRouter } from "expo-router";
@@ -125,17 +126,17 @@ export default function MedicationsScreen() {
   const router = useRouter();
   const tabBarHeight = useBottomTabBarHeight();
 
-  const { medications, togglePaused } = useMedications();
+  const { medications, togglePaused, deleteMedication } = useMedications();
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selected, setSelected] = useState<Medication | null>(null);
 
-  // ✅ Сначала активные, потом paused; внутри групп — сортировка по имени
+  // ✅ active выше paused; внутри групп сортировка по имени
   const list = useMemo(() => {
     return [...medications].sort((a, b) => {
       const pa = a.paused ? 1 : 0;
       const pb = b.paused ? 1 : 0;
-      if (pa !== pb) return pa - pb; // active(0) -> paused(1)
+      if (pa !== pb) return pa - pb;
       return a.name.localeCompare(b.name, "ru");
     });
   }, [medications]);
@@ -152,6 +153,35 @@ export default function MedicationsScreen() {
 
   const goEdit = (id: string) => {
     router.push(`/medications/edit/${id}`);
+  };
+
+  const confirmDelete = (m: Medication) => {
+    const title = "Удалить лекарство?";
+    const message = `«${m.name}» будет удалено без возможности восстановления.`;
+
+    if (Platform.OS === "web") {
+      const confirmFn = (globalThis as any).confirm as
+        | undefined
+        | ((text: string) => boolean);
+      const ok = confirmFn ? confirmFn(`${title}\n\n${message}`) : true;
+      if (ok) {
+        deleteMedication(m.id);
+        closeActions();
+      }
+      return;
+    }
+
+    Alert.alert(title, message, [
+      { text: "Отмена", style: "cancel" },
+      {
+        text: "Удалить",
+        style: "destructive",
+        onPress: () => {
+          deleteMedication(m.id);
+          closeActions();
+        },
+      },
+    ]);
   };
 
   return (
@@ -199,7 +229,6 @@ export default function MedicationsScreen() {
                 </View>
 
                 <View style={{ flex: 1 }}>
-                  {/* 1-я строка: название; если paused — приглушаем и делаем толстое зачёркивание */}
                   {paused ? (
                     <View style={styles.medNameWrap}>
                       <Text
@@ -221,7 +250,6 @@ export default function MedicationsScreen() {
                     </Text>
                   )}
 
-                  {/* 2-я строка: дозировка (если активное — показываем “—”, если paused — скрываем при отсутствии) */}
                   {paused ? (
                     hasDosage ? (
                       <Text style={styles.dosage}>{dosageRaw}</Text>
@@ -230,9 +258,6 @@ export default function MedicationsScreen() {
                     <Text style={styles.dosage}>{dosageRaw || "—"}</Text>
                   )}
 
-                  {/* Чип: всегда отдельной строкой:
-                      - если нет дозировки => после названия (2-я строка)
-                      - если дозировка есть => после дозировки (3-я строка) */}
                   {paused ? (
                     <View
                       style={[
@@ -252,7 +277,6 @@ export default function MedicationsScreen() {
                 </View>
               </View>
 
-              {/* paused — короткая карточка */}
               {paused ? (
                 <View style={styles.pausedDivider} />
               ) : (
@@ -300,6 +324,10 @@ export default function MedicationsScreen() {
           if (selected) togglePaused(selected.id);
           closeActions();
         }}
+        onDelete={() => {
+          if (!selected) return;
+          confirmDelete(selected);
+        }}
       />
     </View>
   );
@@ -346,8 +374,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(148,163,184,0.14)",
   },
-
-  // paused заметно отличается по цвету
   cardPaused: {
     backgroundColor: "rgba(251,191,36,0.06)",
     borderColor: "rgba(251,191,36,0.40)",
@@ -378,28 +404,21 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     lineHeight: 20,
   },
+  medNamePausedText: { color: "#CBD5E1" },
 
-  // приглушённый цвет названия для paused
-  medNamePausedText: {
-    color: "#CBD5E1",
-  },
-
-  // контейнер для “толстого” зачёркивания
   medNameWrap: {
     position: "relative",
     alignSelf: "flex-start",
     maxWidth: "100%",
     flexShrink: 1,
   },
-
-  // толстая линия (цвет как у чипа)
   medNameStrike: {
     position: "absolute",
     left: 0,
     right: 0,
-    height: 2, // сделай 3 если хочешь ещё жирнее
+    height: 2,
     backgroundColor: "#FBBF24",
-    top: 10, // середина при lineHeight=20
+    top: 10,
     borderRadius: 2,
   },
 

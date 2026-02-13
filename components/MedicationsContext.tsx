@@ -20,7 +20,7 @@ export type Medication = {
   weekdays?: number[]; // 0..6
   dates?: string[]; // YYYY-MM-DD[]
 
-  paused?: boolean; // ✅ новое: приостановлен
+  paused?: boolean; // приостановлен
 };
 
 type MedicationsContextValue = {
@@ -32,6 +32,8 @@ type MedicationsContextValue = {
 
   togglePaused: (id: string) => void;
   setPaused: (id: string, paused: boolean) => void;
+
+  deleteMedication: (id: string) => void; // ✅ NEW
 
   isDueToday: (med: Medication) => boolean;
 
@@ -233,6 +235,35 @@ export function MedicationsProvider({
     );
   };
 
+  // ✅ NEW: удалить лекарство + почистить dayStatus (все дни, все дозы этого лекарства)
+  const deleteMedication: MedicationsContextValue["deleteMedication"] = (
+    id,
+  ) => {
+    setMedications((prev) => prev.filter((m) => m.id !== id));
+
+    setDayStatus((prev) => {
+      let changed = false;
+      const next: typeof prev = {};
+
+      for (const dayKey of Object.keys(prev)) {
+        const map = prev[dayKey] ?? {};
+        const filteredEntries = Object.entries(map).filter(
+          ([k]) => k !== id && !k.startsWith(`${id}@`),
+        );
+        const filtered = Object.fromEntries(filteredEntries) as Record<
+          string,
+          "taken" | "skipped"
+        >;
+
+        if (Object.keys(filtered).length !== Object.keys(map).length)
+          changed = true;
+        next[dayKey] = filtered;
+      }
+
+      return changed ? next : prev;
+    });
+  };
+
   const isDueToday: MedicationsContextValue["isDueToday"] = (med) => {
     return isDueOnDate(med, dateKey());
   };
@@ -310,6 +341,7 @@ export function MedicationsProvider({
     updateMedication,
     togglePaused,
     setPaused,
+    deleteMedication,
     isDueToday,
     getTodayStatus,
     setTodayStatus,
