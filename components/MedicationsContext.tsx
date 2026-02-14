@@ -20,7 +20,14 @@ export type Medication = {
   weekdays?: number[]; // 0..6
   dates?: string[]; // YYYY-MM-DD[]
 
-  paused?: boolean; // приостановлен
+  paused?: boolean;
+};
+
+export type HistoryEntry = {
+  date: string; // YYYY-MM-DD
+  medId: string;
+  time?: string;
+  status: "taken" | "skipped";
 };
 
 type MedicationsContextValue = {
@@ -33,12 +40,19 @@ type MedicationsContextValue = {
   togglePaused: (id: string) => void;
   setPaused: (id: string, paused: boolean) => void;
 
-  deleteMedication: (id: string) => void; // ✅ NEW
+  deleteMedication: (id: string) => void;
 
   isDueToday: (med: Medication) => boolean;
 
   getTodayStatus: (medId: string, time?: string) => TodayStatus;
   setTodayStatus: (medId: string, status: TodayStatus, time?: string) => void;
+
+  // ✅ NEW: история из dayStatus
+  getHistoryEntries: (opts?: {
+    medId?: string;
+    from?: string;
+    to?: string;
+  }) => HistoryEntry[];
 
   todayProgress: {
     totalDue: number;
@@ -64,9 +78,7 @@ function dateFromKey(key: string) {
 }
 
 function isDueOnDate(med: Medication, key: string) {
-  // ✅ Приостановленное не считаем “к приёму”
   if (med.paused) return false;
-
   if (med.startDate && key < med.startDate) return false;
 
   if (med.repeat === "daily") return true;
@@ -213,8 +225,6 @@ export function MedicationsProvider({
           ...data,
           time: times[0] ?? data.time ?? "",
           times: times.length ? times : data.times,
-
-          // ✅ если paused не передали — сохраняем текущее
           paused: data.paused ?? m.paused ?? false,
         };
 
@@ -235,7 +245,6 @@ export function MedicationsProvider({
     );
   };
 
-  // ✅ NEW: удалить лекарство + почистить dayStatus (все дни, все дозы этого лекарства)
   const deleteMedication: MedicationsContextValue["deleteMedication"] = (
     id,
   ) => {
@@ -277,7 +286,7 @@ export function MedicationsProvider({
     const dk = doseKey(medId, time);
 
     if (map[dk]) return map[dk];
-    if (time && map[medId]) return map[medId]; // fallback для старых записей
+    if (time && map[medId]) return map[medId];
     return "pending";
   };
 
@@ -302,10 +311,42 @@ export function MedicationsProvider({
     });
   };
 
+  // ✅ NEW
+  const getHistoryEntries: MedicationsContextValue["getHistoryEntries"] = (
+    opts,
+  ) => {
+    const from = opts?.from;
+    const to = opts?.to;
+    const medIdFilter = opts?.medId;
+
+    const out: HistoryEntry[] = [];
+
+    for (const [dKey, map] of Object.entries(dayStatus)) {
+      if (from && dKey < from) continue;
+      if (to && dKey > to) continue;
+
+      for (const [k, st] of Object.entries(map)) {
+        let medId = k;
+        let time: string | undefined;
+
+        const at = k.indexOf("@");
+        if (at !== -1) {
+          medId = k.slice(0, at);
+          time = k.slice(at + 1);
+        }
+
+        if (medIdFilter && medId !== medIdFilter) continue;
+
+        out.push({ date: dKey, medId, time, status: st });
+      }
+    }
+
+    return out;
+  };
+
   const todayProgress = useMemo(() => {
     const today = dateKey();
 
-    // ✅ учитываем только не paused и которые должны быть сегодня
     const dueMeds = medications.filter((m) => isDueOnDate(m, today));
 
     const dueDoses = dueMeds.flatMap((m) => {
@@ -345,6 +386,7 @@ export function MedicationsProvider({
     isDueToday,
     getTodayStatus,
     setTodayStatus,
+    getHistoryEntries,
     todayProgress,
   };
 
