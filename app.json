@@ -8,15 +8,28 @@
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "ios": {
-      "supportsTablet": true
-    },
+    "ios": { "supportsTablet": true },
     "android": {
+      "package": "com.ermosh69da.medicinereminder",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "POST_NOTIFICATIONS",
+        "USE_FULL_SCREEN_INTENT",
+        "SCHEDULE_EXACT_ALARM",
+        "RECEIVE_BOOT_COMPLETED",
+        "WAKE_LOCK",
+        "VIBRATE"
+      ]
+    },
+    "updates": {
+      "url": "https://u.expo.dev/c1072341-144d-42c8-ab88-89b3483eede0"
+    },
+    "runtimeVersion": {
+      "policy": "sdkVersion"
     },
     "web": {
       "bundler": "metro",
@@ -34,10 +47,18 @@
           "backgroundColor": "#ffffff"
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-notifications",
+        {
+          "sounds": ["./assets/sounds/med_sound.mp3"]
+        }
+      ]
     ],
-    "experiments": {
-      "typedRoutes": true
+    "experiments": { "typedRoutes": true },
+    "extra": {
+      "router": {},
+      "eas": { "projectId": "c1072341-144d-42c8-ab88-89b3483eede0" }
     }
   }
 }

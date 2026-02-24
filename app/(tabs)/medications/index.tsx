@@ -20,6 +20,10 @@ import {
   type Period,
 } from "../../../components/MedicationsContext";
 
+// ✅ такие же параметры линии, как в других барах
+const DIVIDER_COLOR = "#55607A";
+const DIVIDER_HEIGHT = 2;
+
 function ruDateFromKey(key: string) {
   const [y, m, d] = key.split("-");
   if (!y || !m || !d) return key;
@@ -111,17 +115,6 @@ function periodChipFromTimes(times: string[], fallback: Period): string {
   return periods.map((p) => periodLabel(p).toUpperCase()).join(", ");
 }
 
-function HeaderFade() {
-  return (
-    <View pointerEvents="none" style={styles.headerFade}>
-      <View style={[styles.fadeRow, { opacity: 0.18 }]} />
-      <View style={[styles.fadeRow, { opacity: 0.12 }]} />
-      <View style={[styles.fadeRow, { opacity: 0.08 }]} />
-      <View style={[styles.fadeRow, { opacity: 0.04 }]} />
-    </View>
-  );
-}
-
 export default function MedicationsScreen() {
   const router = useRouter();
   const tabBarHeight = useBottomTabBarHeight();
@@ -196,7 +189,8 @@ export default function MedicationsScreen() {
         </Link>
       </View>
 
-      <HeaderFade />
+      {/* ✅ линия как на Home/TabBar */}
+      <View style={styles.topDivider} />
 
       <ScrollView
         style={styles.scroll}
@@ -336,6 +330,7 @@ export default function MedicationsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#050B18" },
 
+  // ✅ тень убрана, чтобы линия читалась одинаково
   header: {
     paddingTop: 40,
     paddingHorizontal: 16,
@@ -344,21 +339,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    ...Platform.select({
-      web: { boxShadow: "0px 6px 18px rgba(0,0,0,0.35)" } as any,
-      default: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.25,
-        shadowRadius: 10,
-        elevation: 10,
-      },
-    }),
     zIndex: 10,
   },
 
-  headerFade: { height: 14, backgroundColor: "#050B18" },
-  fadeRow: { flex: 1, backgroundColor: "#000" },
+  // ✅ линия как на других вкладках
+  topDivider: {
+    height: DIVIDER_HEIGHT,
+    backgroundColor: DIVIDER_COLOR,
+  },
 
   title: { color: "#E5E7EB", fontSize: 20, fontWeight: "900" },
   addButton: { backgroundColor: "#38BDF8", borderRadius: 12, padding: 10 },

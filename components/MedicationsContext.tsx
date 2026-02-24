@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+  useEffect,
+} from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export type Period = "morning" | "day" | "evening";
 export type TodayStatus = "pending" | "taken" | "skipped";
@@ -44,10 +51,21 @@ type MedicationsContextValue = {
 
   isDueToday: (med: Medication) => boolean;
 
+  isDueOnDate: (med: Medication, key: string) => boolean;
+
   getTodayStatus: (medId: string, time?: string) => TodayStatus;
   setTodayStatus: (medId: string, status: TodayStatus, time?: string) => void;
 
-  // ✅ NEW: история из dayStatus
+  getStatusForDate: (key: string, medId: string, time?: string) => TodayStatus;
+  setStatusForDate: (
+    key: string,
+    medId: string,
+    status: TodayStatus,
+    time?: string,
+  ) => void;
+
+  statusVersion: number;
+
   getHistoryEntries: (opts?: {
     medId?: string;
     from?: string;
@@ -65,6 +83,50 @@ type MedicationsContextValue = {
 
 const MedicationsContext = createContext<MedicationsContextValue | null>(null);
 
+// Ключи для базы данных
+const STORAGE_KEY_MEDS = "@medications_data_v1";
+const STORAGE_KEY_STATUS = "@dayStatus_data_v1";
+
+// Дефолтные лекарства (покажутся только если у пользователя вообще чистая база)
+const DEFAULT_MEDS: Medication[] = [
+  {
+    id: "1",
+    name: "Мелатонин",
+    dosage: "3 мг",
+    time: "22:00",
+    times: ["22:00"],
+    period: "evening",
+    notes: "",
+    repeat: "daily",
+    startDate: dateKey(),
+    paused: false,
+  },
+  {
+    id: "2",
+    name: "Плавикс",
+    dosage: "75 мг",
+    time: "21:00",
+    times: ["21:00"],
+    period: "evening",
+    notes: "",
+    repeat: "daily",
+    startDate: dateKey(),
+    paused: false,
+  },
+  {
+    id: "3",
+    name: "Аспирин",
+    dosage: "100 мг",
+    time: "09:00",
+    times: ["09:00"],
+    period: "morning",
+    notes: "",
+    repeat: "daily",
+    startDate: dateKey(),
+    paused: false,
+  },
+];
+
 function dateKey(d = new Date()) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -77,7 +139,7 @@ function dateFromKey(key: string) {
   return new Date(y, (m ?? 1) - 1, d ?? 1, 12, 0, 0);
 }
 
-function isDueOnDate(med: Medication, key: string) {
+function isDueOnDateImpl(med: Medication, key: string) {
   if (med.paused) return false;
   if (med.startDate && key < med.startDate) return false;
 
@@ -129,49 +191,53 @@ export function MedicationsProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [medications, setMedications] = useState<Medication[]>([
-    {
-      id: "1",
-      name: "Мелатонин",
-      dosage: "3 мг",
-      time: "22:00",
-      times: ["22:00"],
-      period: "evening",
-      notes: "",
-      repeat: "daily",
-      startDate: dateKey(),
-      paused: false,
-    },
-    {
-      id: "2",
-      name: "Плавикс",
-      dosage: "75 мг",
-      time: "21:00",
-      times: ["21:00"],
-      period: "evening",
-      notes: "",
-      repeat: "daily",
-      startDate: dateKey(),
-      paused: false,
-    },
-    {
-      id: "3",
-      name: "Аспирин",
-      dosage: "100 мг",
-      time: "09:00",
-      times: ["09:00"],
-      period: "morning",
-      notes: "",
-      repeat: "daily",
-      startDate: dateKey(),
-      paused: false,
-    },
-  ]);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [medications, setMedications] = useState<Medication[]>(DEFAULT_MEDS);
 
   // dayStatus[dateKey][doseKey] = "taken" | "skipped"
   const [dayStatus, setDayStatus] = useState<
     Record<string, Record<string, "taken" | "skipped">>
   >({});
+
+  const [statusVersion, setStatusVersion] = useState(0);
+
+  // 1. ЗАГРУЗКА ИЗ ПАМЯТИ ПРИ ЗАПУСКЕ
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const medsJson = await AsyncStorage.getItem(STORAGE_KEY_MEDS);
+        if (medsJson) {
+          setMedications(JSON.parse(medsJson));
+        }
+
+        const statusJson = await AsyncStorage.getItem(STORAGE_KEY_STATUS);
+        if (statusJson) {
+          setDayStatus(JSON.parse(statusJson));
+        }
+      } catch (e) {
+        console.error("Ошибка загрузки данных из памяти", e);
+      } finally {
+        setIsLoaded(true);
+      }
+    };
+    loadData();
+  }, []);
+
+  // 2. СОХРАНЕНИЕ СПИСКА ЛЕКАРСТВ ПРИ ЛЮБОМ ИЗМЕНЕНИИ
+  useEffect(() => {
+    if (!isLoaded) return;
+    AsyncStorage.setItem(STORAGE_KEY_MEDS, JSON.stringify(medications)).catch(
+      (e) => console.error("Ошибка сохранения лекарств", e),
+    );
+  }, [medications, isLoaded]);
+
+  // 3. СОХРАНЕНИЕ ИСТОРИИ ПРИЕМА (dayStatus) ПРИ ЛЮБОМ ИЗМЕНЕНИИ
+  useEffect(() => {
+    if (!isLoaded) return;
+    AsyncStorage.setItem(STORAGE_KEY_STATUS, JSON.stringify(dayStatus)).catch(
+      (e) => console.error("Ошибка сохранения статусов", e),
+    );
+  }, [dayStatus, isLoaded]);
 
   const addMedication: MedicationsContextValue["addMedication"] = (data) => {
     const times = extractTimes(data as Medication);
@@ -250,8 +316,9 @@ export function MedicationsProvider({
   ) => {
     setMedications((prev) => prev.filter((m) => m.id !== id));
 
+    let changed = false;
+
     setDayStatus((prev) => {
-      let changed = false;
       const next: typeof prev = {};
 
       for (const dayKey of Object.keys(prev)) {
@@ -271,17 +338,23 @@ export function MedicationsProvider({
 
       return changed ? next : prev;
     });
+
+    if (changed) setStatusVersion((v) => v + 1);
+  };
+
+  const isDueOnDate: MedicationsContextValue["isDueOnDate"] = (med, key) => {
+    return isDueOnDateImpl(med, key);
   };
 
   const isDueToday: MedicationsContextValue["isDueToday"] = (med) => {
-    return isDueOnDate(med, dateKey());
+    return isDueOnDateImpl(med, dateKey());
   };
 
-  const getTodayStatus: MedicationsContextValue["getTodayStatus"] = (
+  const getStatusForDate: MedicationsContextValue["getStatusForDate"] = (
+    key,
     medId,
     time,
   ) => {
-    const key = dateKey();
     const map = dayStatus[key] ?? {};
     const dk = doseKey(medId, time);
 
@@ -290,28 +363,50 @@ export function MedicationsProvider({
     return "pending";
   };
 
-  const setTodayStatus: MedicationsContextValue["setTodayStatus"] = (
+  const setStatusForDate: MedicationsContextValue["setStatusForDate"] = (
+    key,
     medId,
     status,
     time,
   ) => {
-    const key = dateKey();
     const dk = doseKey(medId, time);
+
+    let changed = false;
 
     setDayStatus((prev) => {
       const cur = prev[key] ?? {};
 
       if (status === "pending") {
         if (!cur[dk]) return prev;
+        changed = true;
         const { [dk]: _, ...rest } = cur;
         return { ...prev, [key]: rest };
       }
 
+      if (cur[dk] === status) return prev;
+
+      changed = true;
       return { ...prev, [key]: { ...cur, [dk]: status } };
     });
+
+    if (changed) setStatusVersion((v) => v + 1);
   };
 
-  // ✅ NEW
+  const getTodayStatus: MedicationsContextValue["getTodayStatus"] = (
+    medId,
+    time,
+  ) => {
+    return getStatusForDate(dateKey(), medId, time);
+  };
+
+  const setTodayStatus: MedicationsContextValue["setTodayStatus"] = (
+    medId,
+    status,
+    time,
+  ) => {
+    return setStatusForDate(dateKey(), medId, status, time);
+  };
+
   const getHistoryEntries: MedicationsContextValue["getHistoryEntries"] = (
     opts,
   ) => {
@@ -347,7 +442,7 @@ export function MedicationsProvider({
   const todayProgress = useMemo(() => {
     const today = dateKey();
 
-    const dueMeds = medications.filter((m) => isDueOnDate(m, today));
+    const dueMeds = medications.filter((m) => isDueOnDateImpl(m, today));
 
     const dueDoses = dueMeds.flatMap((m) => {
       const times = extractTimes(m);
@@ -383,12 +478,24 @@ export function MedicationsProvider({
     togglePaused,
     setPaused,
     deleteMedication,
+
     isDueToday,
+    isDueOnDate,
+
     getTodayStatus,
     setTodayStatus,
+
+    getStatusForDate,
+    setStatusForDate,
+
+    statusVersion,
+
     getHistoryEntries,
     todayProgress,
   };
+
+  // Пока данные из памяти не загрузились, ничего не показываем
+  if (!isLoaded) return null;
 
   return (
     <MedicationsContext.Provider value={value}>

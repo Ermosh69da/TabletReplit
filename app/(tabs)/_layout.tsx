@@ -7,6 +7,10 @@ import MedkitIcon from "../../assets/icons/medkit.svg";
 import HistoryIcon from "../../assets/icons/history.svg";
 import ProfileIcon from "../../assets/icons/profile.svg";
 
+// ✅ одинаковый цвет и толщина линий
+const DIVIDER_COLOR = "#3A4258";
+const DIVIDER_HEIGHT = 2;
+
 function useWebKeyboardOpen() {
   const [open, setOpen] = useState(false);
 
@@ -131,7 +135,11 @@ const styles = StyleSheet.create({
     right: 0,
     height: 120,
     backgroundColor: "#0F172A",
-    borderTopWidth: 0,
+
+    // ✅ линия сверху (2px)
+    borderTopWidth: DIVIDER_HEIGHT,
+    borderTopColor: DIVIDER_COLOR,
+
     paddingTop: 40,
   },
 

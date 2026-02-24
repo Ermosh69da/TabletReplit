@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Link } from "expo-router";
@@ -46,6 +45,10 @@ const COLORS = {
 
   grayChip: "#111827",
 };
+
+// ✅ тот же цвет/толщина, что и в нижнем баре
+const DIVIDER_COLOR = "#55607A";
+const DIVIDER_HEIGHT = 2;
 
 const periodConfig: Record<
   Period,
@@ -96,17 +99,6 @@ function periodFromTime(time: string, fallback: Period): Period {
   if (h >= 5 && h <= 11) return "morning";
   if (h >= 12 && h <= 17) return "day";
   return "evening";
-}
-
-function HeaderFade() {
-  return (
-    <View pointerEvents="none" style={styles.headerFade}>
-      <View style={[styles.fadeRow, { opacity: 0.18 }]} />
-      <View style={[styles.fadeRow, { opacity: 0.12 }]} />
-      <View style={[styles.fadeRow, { opacity: 0.08 }]} />
-      <View style={[styles.fadeRow, { opacity: 0.04 }]} />
-    </View>
-  );
 }
 
 export default function HomeScreen() {
@@ -201,7 +193,8 @@ export default function HomeScreen() {
         </Link>
       </View>
 
-      <HeaderFade />
+      {/* ✅ линия снизу у верхнего бара (2px) */}
+      <View style={styles.topDivider} />
 
       <ScrollView
         contentContainerStyle={[
@@ -296,7 +289,6 @@ export default function HomeScreen() {
           <Text style={styles.sectionTitle}>План приёма</Text>
         </View>
 
-        {/* ✅ обновили подсказку */}
         <Text style={styles.sectionSub}>Тап — меню</Text>
 
         {todayList.length === 0 ? (
@@ -324,7 +316,6 @@ export default function HomeScreen() {
                   isTaken && styles.planItemTaken,
                   isSkipped && styles.planItemSkipped,
                 ]}
-                // ✅ один тап — открывает меню
                 onPress={() => openSheet(d.med.id, d.time)}
                 activeOpacity={0.88}
               >
@@ -428,6 +419,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
 
+  // ✅ тень убрана полностью
   topHeader: {
     paddingTop: 40,
     paddingHorizontal: 16,
@@ -436,22 +428,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-
-    ...Platform.select({
-      web: { boxShadow: "0px 6px 18px rgba(0,0,0,0.35)" } as any,
-      default: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.25,
-        shadowRadius: 10,
-        elevation: 10,
-      },
-    }),
-    zIndex: 10,
   },
 
-  headerFade: { height: 14, backgroundColor: COLORS.bg },
-  fadeRow: { flex: 1, backgroundColor: "#000" },
+  // ✅ линия снизу (2px)
+  topDivider: {
+    height: DIVIDER_HEIGHT,
+    backgroundColor: DIVIDER_COLOR,
+  },
 
   h1: { color: COLORS.title, fontSize: 20, fontWeight: "800" },
   date: { color: COLORS.muted, marginTop: 4 },
