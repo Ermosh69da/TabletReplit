@@ -240,6 +240,15 @@ export default function MedicationReminderOverlay() {
       }))
       .filter((d) => d.medId && d.name);
 
+    if (list.length === 0 && payload?.medId && payload?.name) {
+      list.push({
+        medId: String(payload.medId),
+        name: String(payload.name),
+        dosage: payload.dosage ? String(payload.dosage) : undefined,
+        time: logicalTime,
+      });
+    }
+
     setDisplayTime(uiTime);
     setDateKey(String(payload?.dateKey ?? ""));
     setGroupKey(String(payload?.groupKey ?? ""));

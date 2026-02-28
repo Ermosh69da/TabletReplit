@@ -371,25 +371,23 @@ export function MedicationsProvider({
   ) => {
     const dk = doseKey(medId, time);
 
-    let changed = false;
-
     setDayStatus((prev) => {
       const cur = prev[key] ?? {};
 
       if (status === "pending") {
         if (!cur[dk]) return prev;
-        changed = true;
         const { [dk]: _, ...rest } = cur;
-        return { ...prev, [key]: rest };
+        const next = { ...prev, [key]: rest };
+        setStatusVersion((v) => v + 1);
+        return next;
       }
 
       if (cur[dk] === status) return prev;
 
-      changed = true;
-      return { ...prev, [key]: { ...cur, [dk]: status } };
+      const next = { ...prev, [key]: { ...cur, [dk]: status } };
+      setStatusVersion((v) => v + 1);
+      return next;
     });
-
-    if (changed) setStatusVersion((v) => v + 1);
   };
 
   const getTodayStatus: MedicationsContextValue["getTodayStatus"] = (
