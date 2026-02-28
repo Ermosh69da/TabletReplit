@@ -293,80 +293,82 @@ export default function MedicationReminderOverlay() {
   }, []);
 
   const onSkipAll = async () => {
-    for (const d of doses)
-      setStatusForDate(dateKey, d.medId, "skipped", d.time);
-    await cancelGroupByGroupKey(groupKey);
     close();
+    setTimeout(async () => {
+      for (const d of doses)
+        setStatusForDate(dateKey, d.medId, "skipped", d.time);
+      await cancelGroupByGroupKey(groupKey);
+    }, 100);
   };
 
   const onConfirmAll = async () => {
-    for (const d of doses) setStatusForDate(dateKey, d.medId, "taken", d.time);
-    await cancelGroupByGroupKey(groupKey);
     close();
+    setTimeout(async () => {
+      for (const d of doses) setStatusForDate(dateKey, d.medId, "taken", d.time);
+      await cancelGroupByGroupKey(groupKey);
+    }, 100);
   };
 
-  // ЛОГИКА ОТКЛАДЫВАНИЯ (SNOOZE) ИЗ ФОРГРАУНД КАРТОЧКИ
   const onSnoozeConfirmed = async (minutes: number) => {
     if (!rawPayload) return;
-
-    const now = Date.now();
-    const snoozeAt = new Date(now + minutes * 60 * 1000); // Прибавляем минуты
-    const hh = String(snoozeAt.getHours()).padStart(2, "0");
-    const mm = String(snoozeAt.getMinutes()).padStart(2, "0");
-    const snoozeDisplayTime = `${hh}:${mm}`;
-
-    const id = `snooze:${String(rawPayload.groupKey ?? "unknown")}:${now}`;
-
-    const lines = doses.slice(0, 6).map((d: any) => {
-      const dosage = d.dosage ? ` (${d.dosage})` : "";
-      return `${d.name}${dosage}`;
-    });
-
-    const nextData: Record<string, string> = {
-      ...rawPayload,
-      auto: "0",
-      displayTime: snoozeDisplayTime,
-      snooze: "1",
-    };
-
-    // Создаем новое уведомление на будущее
-    await notifee.createTriggerNotification(
-      {
-        id,
-        title: "Приём таблеток (отложено)",
-        body: `${snoozeDisplayTime} • напоминание`,
-        data: nextData,
-        android: {
-          channelId: "med_default_v3", // ИСПОЛЬЗУЕМ КАНАЛ V3!
-          sound: "med_sound", // СВОЯ МЕЛОДИЯ
-          category: AndroidCategory.ALARM,
-          importance: AndroidImportance.HIGH,
-          smallIcon: "ic_launcher",
-          pressAction: { id: "OPEN", launchActivity: "default" },
-          fullScreenAction: { id: "OPEN", launchActivity: "default" },
-          actions: [
-            {
-              title: "Принять всё",
-              pressAction: { id: "TAKE_ALL", launchActivity: "default" },
-            },
-            {
-              title: "Пропустить всё",
-              pressAction: { id: "SKIP_ALL", launchActivity: "default" },
-            },
-            { title: "Отложить 15 мин", pressAction: { id: "SNOOZE_15" } },
-          ],
-          style: { type: AndroidStyle.INBOX, lines },
-        },
-      },
-      {
-        type: TriggerType.TIMESTAMP,
-        timestamp: snoozeAt.getTime(),
-      },
-    );
-
-    // Удаляем текущее уведомление и закрываем карточку
-    await cancelGroupByGroupKey(groupKey);
     close();
+    setTimeout(async () => {
+      const now = Date.now();
+      const snoozeAt = new Date(now + minutes * 60 * 1000);
+      const hh = String(snoozeAt.getHours()).padStart(2, "0");
+      const mm = String(snoozeAt.getMinutes()).padStart(2, "0");
+      const snoozeDisplayTime = `${hh}:${mm}`;
+
+      const id = `snooze:${String(rawPayload.groupKey ?? "unknown")}:${now}`;
+
+      const lines = doses.slice(0, 6).map((d: any) => {
+        const dosage = d.dosage ? ` (${d.dosage})` : "";
+        return `${d.name}${dosage}`;
+      });
+
+      const nextData: Record<string, string> = {
+        ...rawPayload,
+        auto: "0",
+        displayTime: snoozeDisplayTime,
+        snooze: "1",
+      };
+
+      await notifee.createTriggerNotification(
+        {
+          id,
+          title: "Приём таблеток (отложено)",
+          body: `${snoozeDisplayTime} • напоминание`,
+          data: nextData,
+          android: {
+            channelId: "med_default_v4",
+            sound: "med_sound",
+            category: AndroidCategory.ALARM,
+            importance: AndroidImportance.HIGH,
+            smallIcon: "ic_launcher",
+            pressAction: { id: "OPEN", launchActivity: "default" },
+            fullScreenAction: { id: "OPEN", launchActivity: "default" },
+            actions: [
+              {
+                title: "Принять всё",
+                pressAction: { id: "TAKE_ALL", launchActivity: "default" },
+              },
+              {
+                title: "Пропустить всё",
+                pressAction: { id: "SKIP_ALL", launchActivity: "default" },
+              },
+              { title: "Отложить 15 мин", pressAction: { id: "SNOOZE_15" } },
+            ],
+            style: { type: AndroidStyle.INBOX, lines },
+          },
+        },
+        {
+          type: TriggerType.TIMESTAMP,
+          timestamp: snoozeAt.getTime(),
+          alarmManager: { allowWhileIdle: true },
+        },
+      );
+      await cancelGroupByGroupKey(groupKey);
+    }, 100);
   };
 
   return (
