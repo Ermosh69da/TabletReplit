@@ -278,11 +278,50 @@ export default function MedicationReminderOverlay() {
       if (data?.kind === UI_KIND) present(data);
     })();
 
+    const parseDoses = (payload: any): DoseItem[] => {
+      const logicalTime = normalizeTime(String(payload?.time ?? "00:00"));
+      const rawDoses = safeJsonParse<any[]>(payload?.dosesJson, []);
+      const list: DoseItem[] = rawDoses
+        .map((d: any) => ({
+          medId: String(d.medId),
+          name: String(d.name),
+          dosage: d.dosage ? String(d.dosage) : undefined,
+          time: normalizeTime(String(d.time ?? logicalTime)),
+        }))
+        .filter((d) => d.medId && d.name);
+
+      if (list.length === 0 && payload?.medId && payload?.name) {
+        list.push({
+          medId: String(payload.medId),
+          name: String(payload.name),
+          dosage: payload.dosage ? String(payload.dosage) : undefined,
+          time: logicalTime,
+        });
+      }
+      return list;
+    };
+
     unsub = notifee.onForegroundEvent(({ type, detail }) => {
       const data: any = detail.notification?.data ?? null;
       if (!data || data.kind !== UI_KIND) return;
 
       if (type === EventType.PRESS || type === EventType.ACTION_PRESS) {
+        // Если нажата кнопка действия в уведомлении, обрабатываем её сразу
+        const actionId = detail.pressAction?.id;
+        if (actionId === "TAKE_ALL") {
+          const list = parseDoses(data);
+          for (const d of list)
+            setStatusForDate(data.dateKey, d.medId, "taken", d.time);
+          cancelGroupByGroupKey(data.groupKey);
+          return;
+        }
+        if (actionId === "SKIP_ALL") {
+          const list = parseDoses(data);
+          for (const d of list)
+            setStatusForDate(data.dateKey, d.medId, "skipped", d.time);
+          cancelGroupByGroupKey(data.groupKey);
+          return;
+        }
         present(data);
       }
     });

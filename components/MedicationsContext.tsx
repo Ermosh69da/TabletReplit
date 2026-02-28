@@ -378,14 +378,14 @@ export function MedicationsProvider({
         if (!cur[dk]) return prev;
         const { [dk]: _, ...rest } = cur;
         const next = { ...prev, [key]: rest };
-        setStatusVersion((v) => v + 1);
+        setTimeout(() => setStatusVersion((v) => v + 1), 0);
         return next;
       }
 
       if (cur[dk] === status) return prev;
 
       const next = { ...prev, [key]: { ...cur, [dk]: status } };
-      setStatusVersion((v) => v + 1);
+      setTimeout(() => setStatusVersion((v) => v + 1), 0);
       return next;
     });
   };
