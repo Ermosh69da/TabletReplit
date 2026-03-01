@@ -180,7 +180,7 @@ export default function MedicationsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Мои лекарства</Text>
+        <Text style={styles.title}>Мои лекарства 777</Text>
 
         <Link href="/medications/new" asChild>
           <TouchableOpacity style={styles.addButton} activeOpacity={0.85}>
