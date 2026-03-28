@@ -1,5 +1,6 @@
 { pkgs }: {
   deps = [
+    pkgs.tree
     pkgs.gh
     pkgs.psmisc
     pkgs.lsof

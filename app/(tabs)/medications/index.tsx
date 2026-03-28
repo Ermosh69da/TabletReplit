@@ -124,14 +124,16 @@ export default function MedicationsScreen() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selected, setSelected] = useState<Medication | null>(null);
 
-  // ✅ active выше paused; внутри групп сортировка по имени
+  // ✅ ФИЛЬТРУЕМ удаленные лекарства, затем активные выше paused, внутри групп сортировка по имени
   const list = useMemo(() => {
-    return [...medications].sort((a, b) => {
-      const pa = a.paused ? 1 : 0;
-      const pb = b.paused ? 1 : 0;
-      if (pa !== pb) return pa - pb;
-      return a.name.localeCompare(b.name, "ru");
-    });
+    return medications
+      .filter((m) => !m.isDeleted) // <-- Скрываем удаленные лекарства из списка
+      .sort((a, b) => {
+        const pa = a.paused ? 1 : 0;
+        const pb = b.paused ? 1 : 0;
+        if (pa !== pb) return pa - pb;
+        return a.name.localeCompare(b.name, "ru");
+      });
   }, [medications]);
 
   const openActions = (m: Medication) => {
@@ -150,7 +152,7 @@ export default function MedicationsScreen() {
 
   const confirmDelete = (m: Medication) => {
     const title = "Удалить лекарство?";
-    const message = `«${m.name}» будет удалено без возможности восстановления.`;
+    const message = `«${m.name}» будет удалено из списка (история приёмов сохранится).`;
 
     if (Platform.OS === "web") {
       const confirmFn = (globalThis as any).confirm as
@@ -330,7 +332,6 @@ export default function MedicationsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#050B18" },
 
-  // ✅ тень убрана, чтобы линия читалась одинаково
   header: {
     paddingTop: 40,
     paddingHorizontal: 16,
@@ -342,7 +343,6 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
 
-  // ✅ линия как на других вкладках
   topDivider: {
     height: DIVIDER_HEIGHT,
     backgroundColor: DIVIDER_COLOR,

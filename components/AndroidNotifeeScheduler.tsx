@@ -18,8 +18,8 @@ import { useAppSettings } from "./AppSettingsContext";
 const UI_KIND = "MED_REMINDER";
 const WINDOW_DAYS = 5;
 
-const CHANNEL_DEFAULT = "med_default_v3";
-const CHANNEL_SNOOZE = "med_default_v4";
+const CHANNEL_DEFAULT = "med_default_v5";
+const CHANNEL_SNOOZE = "med_default_v6";
 const CHANNEL_SILENT = "med_silent";
 
 const DEBUG_KEY = "notifee_scheduler_debug_v1";
@@ -52,7 +52,11 @@ function normalizeTime(t: string) {
 function getTimes(m: Medication): string[] {
   const anyM: any = m;
   if (Array.isArray(anyM.times) && anyM.times.length > 0) {
-    return Array.from(new Set(anyM.times.map((t: any) => normalizeTime(String(t).trim())))).filter(Boolean).sort();
+    return Array.from(
+      new Set(anyM.times.map((t: any) => normalizeTime(String(t).trim()))),
+    )
+      .filter(Boolean)
+      .sort();
   }
   const raw = typeof anyM.time === "string" ? anyM.time : "";
   const matches = raw.match(/\b\d{1,2}:\d{2}\b/g) ?? [];
@@ -132,7 +136,11 @@ async function cancelAutoScheduled() {
   await Promise.all(ids.map((id) => notifee.cancelTriggerNotification(id!)));
 }
 
-async function scheduleWithFallback(notification: any, timestamp: number, useAlarmManager: boolean) {
+async function scheduleWithFallback(
+  notification: any,
+  timestamp: number,
+  useAlarmManager: boolean,
+) {
   if (useAlarmManager) {
     try {
       await notifee.createTriggerNotification(notification, {
@@ -157,7 +165,8 @@ async function scheduleWithFallback(notification: any, timestamp: number, useAla
 }
 
 export default function AndroidNotifeeScheduler() {
-  const { medications, isDueOnDate, getStatusForDate, statusVersion }: any = useMedications();
+  const { medications, isDueOnDate, getStatusForDate, statusVersion }: any =
+    useMedications();
   const { settings } = useAppSettings();
   const enabled = settings.notificationsEnabled;
   const lastSignatureRef = useRef<string | null>(null);
@@ -169,8 +178,14 @@ export default function AndroidNotifeeScheduler() {
     for (let offset = 0; offset < WINDOW_DAYS; offset++) {
       const day = addDays(day0, offset);
       const dateKey = dateKeyFromDate(day);
-      const map = new Map<string, { medIds: string[]; items: { medId: string; name: string; dosage: string }[] }>();
-      for (const med of (medications as Medication[])) {
+      const map = new Map<
+        string,
+        {
+          medIds: string[];
+          items: { medId: string; name: string; dosage: string }[];
+        }
+      >();
+      for (const med of medications as Medication[]) {
         if ((med as any).paused) continue;
         if (!isDueOnDate(med, dateKey)) continue;
         const times = getTimes(med);
@@ -179,11 +194,17 @@ export default function AndroidNotifeeScheduler() {
           if (st === "taken" || st === "skipped") continue;
           const cur = map.get(t) ?? { medIds: [], items: [] };
           cur.medIds.push(med.id);
-          cur.items.push({ medId: med.id, name: med.name, dosage: (med as any).dosage || "" });
+          cur.items.push({
+            medId: med.id,
+            name: med.name,
+            dosage: (med as any).dosage || "",
+          });
           map.set(t, cur);
         }
       }
-      const timesSorted = Array.from(map.keys()).sort((a, b) => a.localeCompare(b));
+      const timesSorted = Array.from(map.keys()).sort((a, b) =>
+        a.localeCompare(b),
+      );
       for (const t of timesSorted) {
         const entry = map.get(t);
         if (!entry || entry.medIds.length === 0) continue;
@@ -191,7 +212,14 @@ export default function AndroidNotifeeScheduler() {
         const { hh, mm } = parseHM(t);
         const when = new Date(day);
         when.setHours(hh, mm, 0, 0);
-        events.push({ when, dateKey, time: t, groupKey: `${dateKey}|${t}`, medIds: entry.medIds, items: entry.items });
+        events.push({
+          when,
+          dateKey,
+          time: t,
+          groupKey: `${dateKey}|${t}`,
+          medIds: entry.medIds,
+          items: entry.items,
+        });
       }
     }
     events.sort((a, b) => a.when.getTime() - b.when.getTime());
@@ -201,18 +229,42 @@ export default function AndroidNotifeeScheduler() {
   useEffect(() => {
     if (Platform.OS !== "android") return;
     const run = async () => {
-      const debug: any = { at: new Date().toISOString(), enabled, medsCount: Array.isArray(medications) ? medications.length : -1, baseEventsCount: baseEvents.length, useAlarmManager: false, scheduledOk: 0, scheduledFail: 0, errors: [] };
+      const debug: any = {
+        at: new Date().toISOString(),
+        enabled,
+        medsCount: Array.isArray(medications) ? medications.length : -1,
+        baseEventsCount: baseEvents.length,
+        useAlarmManager: false,
+        scheduledOk: 0,
+        scheduledFail: 0,
+        errors: [],
+      };
       try {
-        if (!enabled) { await AsyncStorage.setItem(DEBUG_KEY, JSON.stringify(debug, null, 2)); return; }
+        if (!enabled) {
+          await AsyncStorage.setItem(DEBUG_KEY, JSON.stringify(debug, null, 2));
+          return;
+        }
         await ensureChannels();
         try {
           const st = await (notifee as any).getAlarmPermissionStatus?.();
           debug.alarmPermissionStatus = st ?? "—";
           debug.useAlarmManager = st === "authorized";
-        } catch (e: any) { debug.useAlarmManager = false; }
+        } catch (e: any) {
+          debug.useAlarmManager = false;
+        }
         const signature = JSON.stringify({
-          base: baseEvents.map((e) => ({ when: e.when.toISOString().slice(0, 16), dateKey: e.dateKey, time: e.time, medIds: e.medIds })),
-          settings: { notificationsEnabled: settings.notificationsEnabled, quietHoursEnabled: settings.quietHoursEnabled, quietFrom: settings.quietFrom, quietTo: settings.quietTo }
+          base: baseEvents.map((e) => ({
+            when: e.when.toISOString().slice(0, 16),
+            dateKey: e.dateKey,
+            time: e.time,
+            medIds: e.medIds,
+          })),
+          settings: {
+            notificationsEnabled: settings.notificationsEnabled,
+            quietHoursEnabled: settings.quietHoursEnabled,
+            quietFrom: settings.quietFrom,
+            quietTo: settings.quietTo,
+          },
         });
         if (lastSignatureRef.current === signature) return;
         lastSignatureRef.current = signature;
@@ -222,24 +274,85 @@ export default function AndroidNotifeeScheduler() {
           if (ev.when.getTime() <= now + 5000) continue;
           const p = periodFromTime(ev.time);
           const title = `Приём таблеток (${periodLabel(p)})`;
-          const doses = ev.items.map((it) => ({ medId: it.medId, name: it.name, dosage: it.dosage, time: ev.time }));
-          const lines = doses.slice(0, 6).map((d) => `${d.name}${d.dosage ? ` (${d.dosage})` : ""}`);
-          const inQuiet = settings.quietHoursEnabled && isInQuietHours(ev.time, settings.quietFrom, settings.quietTo);
+          const doses = ev.items.map((it) => ({
+            medId: it.medId,
+            name: it.name,
+            dosage: it.dosage,
+            time: ev.time,
+          }));
+          const lines = doses
+            .slice(0, 6)
+            .map((d) => `${d.name}${d.dosage ? ` (${d.dosage})` : ""}`);
+          const inQuiet =
+            settings.quietHoursEnabled &&
+            isInQuietHours(ev.time, settings.quietFrom, settings.quietTo);
           const channelId = inQuiet ? CHANNEL_SILENT : CHANNEL_DEFAULT;
-          const data: Record<string, string> = { kind: UI_KIND, auto: "1", groupKey: ev.groupKey, dateKey: ev.dateKey, time: ev.time, displayTime: ev.time, medIdsJson: JSON.stringify(ev.medIds), dosesJson: JSON.stringify(doses) };
-          const res = await scheduleWithFallback({
-            id: `auto:${ev.groupKey}`, title, body: `${ev.time} • ${ev.items.length} шт.`, data,
-            android: { channelId, sound: channelId === CHANNEL_DEFAULT ? "med_sound" : undefined, category: AndroidCategory.ALARM, importance: AndroidImportance.HIGH, smallIcon: "ic_launcher", fullScreenAction: { id: "OPEN", launchActivity: "default" }, pressAction: { id: "OPEN", launchActivity: "default" },
-            actions: [ { title: "Принять всё", pressAction: { id: "TAKE_ALL", launchActivity: "default" } }, { title: "Пропустить всё", pressAction: { id: "SKIP_ALL", launchActivity: "default" } }, { title: "Отложить 15 мин", pressAction: { id: "SNOOZE_15" } } ],
-            style: { type: AndroidStyle.INBOX, lines } }
-          }, ev.when.getTime(), debug.useAlarmManager);
+          const data: Record<string, string> = {
+            kind: UI_KIND,
+            auto: "1",
+            groupKey: ev.groupKey,
+            dateKey: ev.dateKey,
+            time: ev.time,
+            displayTime: ev.time,
+            medIdsJson: JSON.stringify(ev.medIds),
+            dosesJson: JSON.stringify(doses),
+          };
+          const res = await scheduleWithFallback(
+            {
+              id: `auto:${ev.groupKey}`,
+              title,
+              body: `${ev.time} • ${ev.items.length} шт.`,
+              data,
+              android: {
+                channelId,
+                sound: channelId === CHANNEL_DEFAULT ? "med_sound" : undefined,
+                category: AndroidCategory.ALARM,
+                importance: AndroidImportance.HIGH,
+                smallIcon: "ic_launcher",
+                fullScreenAction: { id: "OPEN", launchActivity: "default" },
+                pressAction: { id: "OPEN", launchActivity: "default" },
+                actions: [
+                  {
+                    title: "Принять всё",
+                    pressAction: { id: "TAKE_ALL", launchActivity: "default" },
+                  },
+                  {
+                    title: "Пропустить всё",
+                    pressAction: { id: "SKIP_ALL", launchActivity: "default" },
+                  },
+                  {
+                    title: "Отложить 15 мин",
+                    pressAction: { id: "SNOOZE_15" },
+                  },
+                ],
+                style: { type: AndroidStyle.INBOX, lines },
+              },
+            },
+            ev.when.getTime(),
+            debug.useAlarmManager,
+          );
           if (res.ok) debug.scheduledOk += 1;
-          else { debug.scheduledFail += 1; debug.errors.push(`id=${ev.groupKey} err=${res.error}`); }
+          else {
+            debug.scheduledFail += 1;
+            debug.errors.push(`id=${ev.groupKey} err=${res.error}`);
+          }
         }
         await AsyncStorage.setItem(DEBUG_KEY, JSON.stringify(debug, null, 2));
-      } catch (e: any) { debug.fatal = e?.message ?? String(e); await AsyncStorage.setItem(DEBUG_KEY, JSON.stringify(debug, null, 2)); }
+      } catch (e: any) {
+        debug.fatal = e?.message ?? String(e);
+        await AsyncStorage.setItem(DEBUG_KEY, JSON.stringify(debug, null, 2));
+      }
     };
     run();
-  }, [enabled, medications, baseEvents, statusVersion, settings.notificationsEnabled, settings.quietHoursEnabled, settings.quietFrom, settings.quietTo]);
+  }, [
+    enabled,
+    medications,
+    baseEvents,
+    statusVersion,
+    settings.notificationsEnabled,
+    settings.quietHoursEnabled,
+    settings.quietFrom,
+    settings.quietTo,
+  ]);
   return null;
 }

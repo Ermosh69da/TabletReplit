@@ -16,22 +16,23 @@ export type Medication = {
   name: string;
   dosage: string;
 
-  time: string; // "HH:MM" (первое время, для совместимости)
-  times?: string[]; // ["HH:MM", ...]
+  time: string;
+  times?: string[];
 
-  period: Period; // fallback период (по первому времени)
+  period: Period;
   notes: string;
 
   repeat: RepeatMode;
-  startDate?: string; // YYYY-MM-DD
-  weekdays?: number[]; // 0..6
-  dates?: string[]; // YYYY-MM-DD[]
+  startDate?: string;
+  weekdays?: number[];
+  dates?: string[];
 
   paused?: boolean;
+  isDeleted?: boolean; // ДОБАВЛЕН НОВЫЙ ФЛАГ ДЛЯ МЯГКОГО УДАЛЕНИЯ
 };
 
 export type HistoryEntry = {
-  date: string; // YYYY-MM-DD
+  date: string;
   medId: string;
   time?: string;
   status: "taken" | "skipped";
@@ -50,7 +51,6 @@ type MedicationsContextValue = {
   deleteMedication: (id: string) => void;
 
   isDueToday: (med: Medication) => boolean;
-
   isDueOnDate: (med: Medication, key: string) => boolean;
 
   getTodayStatus: (medId: string, time?: string) => TodayStatus;
@@ -83,11 +83,9 @@ type MedicationsContextValue = {
 
 const MedicationsContext = createContext<MedicationsContextValue | null>(null);
 
-// Ключи для базы данных
 const STORAGE_KEY_MEDS = "@medications_data_v1";
 const STORAGE_KEY_STATUS = "@dayStatus_data_v1";
 
-// Дефолтные лекарства (покажутся только если у пользователя вообще чистая база)
 const DEFAULT_MEDS: Medication[] = [
   {
     id: "1",
@@ -100,6 +98,7 @@ const DEFAULT_MEDS: Medication[] = [
     repeat: "daily",
     startDate: dateKey(),
     paused: false,
+    isDeleted: false,
   },
   {
     id: "2",
@@ -112,6 +111,7 @@ const DEFAULT_MEDS: Medication[] = [
     repeat: "daily",
     startDate: dateKey(),
     paused: false,
+    isDeleted: false,
   },
   {
     id: "3",
@@ -124,6 +124,7 @@ const DEFAULT_MEDS: Medication[] = [
     repeat: "daily",
     startDate: dateKey(),
     paused: false,
+    isDeleted: false,
   },
 ];
 
@@ -140,7 +141,8 @@ function dateFromKey(key: string) {
 }
 
 function isDueOnDateImpl(med: Medication, key: string) {
-  if (med.paused) return false;
+  if (med.isDeleted) return false; // УДАЛЕННЫЕ НЕ ТРЕБУЮТ ПРИЕМА
+  if (med.paused) return false; // ПРИОСТАНОВЛЕННЫЕ ТОЖЕ
   if (med.startDate && key < med.startDate) return false;
 
   if (med.repeat === "daily") return true;
@@ -193,27 +195,19 @@ export function MedicationsProvider({
 }) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [medications, setMedications] = useState<Medication[]>(DEFAULT_MEDS);
-
-  // dayStatus[dateKey][doseKey] = "taken" | "skipped"
   const [dayStatus, setDayStatus] = useState<
     Record<string, Record<string, "taken" | "skipped">>
   >({});
-
   const [statusVersion, setStatusVersion] = useState(0);
 
-  // 1. ЗАГРУЗКА ИЗ ПАМЯТИ ПРИ ЗАПУСКЕ
   useEffect(() => {
     const loadData = async () => {
       try {
         const medsJson = await AsyncStorage.getItem(STORAGE_KEY_MEDS);
-        if (medsJson) {
-          setMedications(JSON.parse(medsJson));
-        }
+        if (medsJson) setMedications(JSON.parse(medsJson));
 
         const statusJson = await AsyncStorage.getItem(STORAGE_KEY_STATUS);
-        if (statusJson) {
-          setDayStatus(JSON.parse(statusJson));
-        }
+        if (statusJson) setDayStatus(JSON.parse(statusJson));
       } catch (e) {
         console.error("Ошибка загрузки данных из памяти", e);
       } finally {
@@ -223,7 +217,6 @@ export function MedicationsProvider({
     loadData();
   }, []);
 
-  // 2. СОХРАНЕНИЕ СПИСКА ЛЕКАРСТВ ПРИ ЛЮБОМ ИЗМЕНЕНИИ
   useEffect(() => {
     if (!isLoaded) return;
     AsyncStorage.setItem(STORAGE_KEY_MEDS, JSON.stringify(medications)).catch(
@@ -231,7 +224,6 @@ export function MedicationsProvider({
     );
   }, [medications, isLoaded]);
 
-  // 3. СОХРАНЕНИЕ ИСТОРИИ ПРИЕМА (dayStatus) ПРИ ЛЮБОМ ИЗМЕНЕНИИ
   useEffect(() => {
     if (!isLoaded) return;
     AsyncStorage.setItem(STORAGE_KEY_STATUS, JSON.stringify(dayStatus)).catch(
@@ -241,12 +233,10 @@ export function MedicationsProvider({
 
   const addMedication: MedicationsContextValue["addMedication"] = (data) => {
     const times = extractTimes(data as Medication);
-
     const normalized: Omit<Medication, "id"> = {
       ...data,
       time: times[0] ?? data.time ?? "",
       times: times.length ? times : data.times,
-
       repeat: data.repeat ?? "daily",
       startDate: data.startDate ?? dateKey(),
       weekdays:
@@ -261,10 +251,9 @@ export function MedicationsProvider({
             ? data.dates
             : [dateKey()]
           : data.dates,
-
       paused: data.paused ?? false,
+      isDeleted: false,
     };
-
     setMedications((prev) => [
       { id: String(Date.now()), ...normalized },
       ...prev,
@@ -282,18 +271,16 @@ export function MedicationsProvider({
     data,
   ) => {
     const times = extractTimes(data as Medication);
-
     setMedications((prev) =>
       prev.map((m) => {
         if (m.id !== id) return m;
-
         const normalized: Omit<Medication, "id"> = {
           ...data,
           time: times[0] ?? data.time ?? "",
           times: times.length ? times : data.times,
           paused: data.paused ?? m.paused ?? false,
+          isDeleted: data.isDeleted ?? m.isDeleted ?? false,
         };
-
         return { id, ...normalized };
       }),
     );
@@ -311,35 +298,14 @@ export function MedicationsProvider({
     );
   };
 
+  // МЯГКОЕ УДАЛЕНИЕ: МЕНЯЕМ ТОЛЬКО ФЛАГ isDeleted, ИСТОРИЮ НЕ ТРОГАЕМ!
   const deleteMedication: MedicationsContextValue["deleteMedication"] = (
     id,
   ) => {
-    setMedications((prev) => prev.filter((m) => m.id !== id));
-
-    let changed = false;
-
-    setDayStatus((prev) => {
-      const next: typeof prev = {};
-
-      for (const dayKey of Object.keys(prev)) {
-        const map = prev[dayKey] ?? {};
-        const filteredEntries = Object.entries(map).filter(
-          ([k]) => k !== id && !k.startsWith(`${id}@`),
-        );
-        const filtered = Object.fromEntries(filteredEntries) as Record<
-          string,
-          "taken" | "skipped"
-        >;
-
-        if (Object.keys(filtered).length !== Object.keys(map).length)
-          changed = true;
-        next[dayKey] = filtered;
-      }
-
-      return changed ? next : prev;
-    });
-
-    if (changed) setStatusVersion((v) => v + 1);
+    setMedications((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, isDeleted: true } : m)),
+    );
+    setStatusVersion((v) => v + 1); // Обновляем UI
   };
 
   const isDueOnDate: MedicationsContextValue["isDueOnDate"] = (med, key) => {
@@ -357,7 +323,6 @@ export function MedicationsProvider({
   ) => {
     const map = dayStatus[key] ?? {};
     const dk = doseKey(medId, time);
-
     if (map[dk]) return map[dk];
     if (time && map[medId]) return map[medId];
     return "pending";
@@ -370,10 +335,8 @@ export function MedicationsProvider({
     time,
   ) => {
     const dk = doseKey(medId, time);
-
     setDayStatus((prev) => {
       const cur = prev[key] ?? {};
-
       if (status === "pending") {
         if (!cur[dk]) return prev;
         const { [dk]: _, ...rest } = cur;
@@ -381,9 +344,7 @@ export function MedicationsProvider({
         setTimeout(() => setStatusVersion((v) => v + 1), 0);
         return next;
       }
-
       if (cur[dk] === status) return prev;
-
       const next = { ...prev, [key]: { ...cur, [dk]: status } };
       setTimeout(() => setStatusVersion((v) => v + 1), 0);
       return next;
@@ -411,37 +372,29 @@ export function MedicationsProvider({
     const from = opts?.from;
     const to = opts?.to;
     const medIdFilter = opts?.medId;
-
     const out: HistoryEntry[] = [];
 
     for (const [dKey, map] of Object.entries(dayStatus)) {
       if (from && dKey < from) continue;
       if (to && dKey > to) continue;
-
       for (const [k, st] of Object.entries(map)) {
         let medId = k;
         let time: string | undefined;
-
         const at = k.indexOf("@");
         if (at !== -1) {
           medId = k.slice(0, at);
           time = k.slice(at + 1);
         }
-
         if (medIdFilter && medId !== medIdFilter) continue;
-
         out.push({ date: dKey, medId, time, status: st });
       }
     }
-
     return out;
   };
 
   const todayProgress = useMemo(() => {
     const today = dateKey();
-
     const dueMeds = medications.filter((m) => isDueOnDateImpl(m, today));
-
     const dueDoses = dueMeds.flatMap((m) => {
       const times = extractTimes(m);
       return times.length
@@ -450,7 +403,6 @@ export function MedicationsProvider({
     });
 
     const totalDue = dueDoses.length;
-
     const taken = dueDoses.reduce(
       (acc, d) => acc + (getTodayStatus(d.medId, d.time) === "taken" ? 1 : 0),
       0,
@@ -465,7 +417,6 @@ export function MedicationsProvider({
       totalForProgress === 0 ? 0 : Math.round((taken / totalForProgress) * 100);
 
     return { totalDue, totalForProgress, taken, skipped, percent };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [medications, dayStatus]);
 
   const value: MedicationsContextValue = {
@@ -476,23 +427,17 @@ export function MedicationsProvider({
     togglePaused,
     setPaused,
     deleteMedication,
-
     isDueToday,
     isDueOnDate,
-
     getTodayStatus,
     setTodayStatus,
-
     getStatusForDate,
     setStatusForDate,
-
     statusVersion,
-
     getHistoryEntries,
     todayProgress,
   };
 
-  // Пока данные из памяти не загрузились, ничего не показываем
   if (!isLoaded) return null;
 
   return (
